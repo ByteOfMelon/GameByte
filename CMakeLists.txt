@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10) # Or a newer version like 3.15+ for SDL3
-project(GameBoyEmulator LANGUAGES CXX)
+project(GameByte LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17) # Or your preferred C++ standard (e.g., 14, 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -20,7 +20,7 @@ add_executable(GameByte src/main.cpp
                           src/core/cpu.cpp
                           src/core/mmu.cpp
                           src/core/rom.cpp
-                          # src/core/ppu.cpp
+                          src/core/ppu.cpp
                           # Add other.cpp files as you create them
                           )
 

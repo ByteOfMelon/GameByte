@@ -1,5 +1,15 @@
 #include "mmu.h"
+#include "cpu.h"
+#include "ppu.h"
 #include <cstring>
+
+void MMU::connect_cpu(CPU* c) {
+    cpu = c;
+}
+
+void MMU::connect_ppu(PPU* p) {
+    ppu = p;
+}
 
 bool MMU::load_game(const uint8_t* data, size_t size) {
     // Clear cartridge memory
@@ -20,6 +30,11 @@ bool MMU::load_game(const uint8_t* data, size_t size) {
 uint8_t MMU::read_byte(uint16_t address) {
     // Stream for errors
     std::stringstream ss;
+
+    // Special read redirects (I/O registers, VRAM, etc)
+    if (address == 0xFF44 && ppu) {
+        return ppu->get_ly();
+    }
 
     // Find byte in memory map
     switch (address) {
@@ -49,6 +64,10 @@ uint8_t MMU::read_byte(uint16_t address) {
 
         // I/O Registers
         case 0xFF00 ... 0xFF7F:
+            if (address == 0xFF04 && cpu) {
+                std::cout << "[MMU] DEBUG: Reading DIV register at 0xFF04, returning upper 8 bits of internal counter: " << std::hex << (cpu->internal_counter >> 8) << std::dec << std::endl;
+                return static_cast<uint8_t>(cpu->internal_counter >> 8);
+            }
             return io[address - 0xFF00];
 
         // High RAM
@@ -71,12 +90,29 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
     // Stream for errors
     std::stringstream ss;
 
-    // Find byte in memory map
+    // Special write cases (i.e. I/O registers, VRAM, etc)
+
+    // LY/scanline register - CPU cannot write to this register, so set to 0 instead
+    if (address == 0xFF44 && ppu) {
+        ppu->reset_ly(); 
+        return;
+    }
+
+    // DIV register (0xFF04)
+    if (address == 0xFF04) {
+        // Writing to DIV register resets it
+        cpu->reset_internal_counter();
+        return;
+    }
+
+    // Other bytes - find byte in memory map
     switch (address) {
-        // Cartridge ROM is read-only and therefore is invalid
+        // Cartridge ROM is read-only directly, but used for MBC commands
         case 0x0000 ... 0x7FFF:
-            ss << "Attempted write to ROM";
-            throw std::runtime_error("[MMU] " + ss.str());
+            // TODO: Implement MBC banking support.
+            // Many games write to this area to switch ROM banks or enable RAM.
+            // For now, we ignore these writes to prevent crashes, treating it as "no MBC".
+            // std::cout << "[MMU] DEBUG: Ignored write to ROM address 0x" << std::hex << address << " (value: 0x" << (int)value << ")" << std::endl;
             break;
         // VRAM
         case 0x8000 ... 0x9FFF:
@@ -98,7 +134,11 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
         case 0xFE00 ... 0xFE9F:
             oam[address - 0xFE00] = value;
             break;
-        // I/O Registers
+        // Unusable memory
+        case 0xFEA0 ... 0xFEFF:
+            // Writes to this area are ignored on DMG
+            break;
+        // I/O Registers (general/unimplemented)
         case 0xFF00 ... 0xFF7F:
             io[address - 0xFF00] = value;
             break;

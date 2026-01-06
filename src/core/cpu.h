@@ -49,8 +49,15 @@ class CPU {
         uint16_t sp; // Stack pointer
         uint16_t pc; // Program counter
 
-        // Interrupt Master Enable flag
+        // Interrupt Master Enable flags
         bool ime;
+        int ime_delay = 0;
+
+        // Halted flag
+        bool halted = false;
+
+        // Internal counter for div timer
+        uint16_t internal_counter;
 
         // Constructor
         CPU();
@@ -82,9 +89,25 @@ class CPU {
         // Connect an initialized MMU to the CPU
         void connect_mmu(MMU* mmu);
 
+        // Tick internal CPU timers based on cycles passed
+        void tick_timers(uint8_t cycles);
+
+        // Reset internal counter
+        void reset_internal_counter();
+
+        // Interrupt handlers
+        uint8_t handle_interrupts();
+        uint8_t execute_interrupt(uint8_t bit, uint16_t vector);
+
         // Execute the next instruction
         // Returns the number of cycles consumed
         uint8_t step();
+
+        // Implement extended opcodes (0xCB prefix)
+        uint8_t execute_cb_instruction(uint8_t opcode);
+
+        // Handle carry flag for CB instructions
+        uint8_t handle_cb_shift_rotate(uint8_t opcode, uint8_t value);
 
         // Initialize instruction table for opcode handling
         void init_instructions();
@@ -101,38 +124,289 @@ class CPU {
         uint8_t JP_a16();
 
         // XOR A with A (0xAF)
-        uint8_t XOR_a();
+        uint8_t XOR_A_A();
 
-        // Load 16-bit immediate into HL register pair (0x21)
-        uint8_t LD_HL_n16();
+        // XOR A with B (0xA8)
+        uint8_t XOR_A_B();
 
-        // Load 8-bit immediate into C register (0x0E)
-        uint8_t LD_C_n8();
+        // XOR A with C (0xA9)
+        uint8_t XOR_A_C();
 
-        // Load 8-bit immediate into B register (0x06)
-        uint8_t LD_B_n8();
+        // XOR A with D (0xAA)
+        uint8_t XOR_A_D();
 
-        // Load 16-bit immediate into stack pointer (0x31)
-        uint8_t LD_SP_n16();
+        // XOR A with E (0xAB)
+        uint8_t XOR_A_E();
 
-        // Load the value of register A into memory address pointed to by HL, then decrement HL (0x32)
-        uint8_t LD_HLmA_dec();
+        // XOR A with 8-bit immediate (0xEE)
+        uint8_t XOR_A_n8();
+
+        // Load 8-bit immediate group
+        uint8_t LD_A_n8(); // 0x3E
+        uint8_t LD_B_n8(); // 0x06
+        uint8_t LD_C_n8(); // 0x0E
+        uint8_t LD_D_n8(); // 0x16
+        uint8_t LD_E_n8(); // 0x1E
+        uint8_t LD_H_n8(); // 0x26
+        uint8_t LD_L_n8(); // 0x2E
+        uint8_t LD_HL_n8(); // 0x36
+
         
+        // Decrement register A by 1 (0x3D)
+        uint8_t DEC_A();
+
         // Decrement register B (0x05)
         uint8_t DEC_B();
 
         // Decrement register C (0x0D)
         uint8_t DEC_C();
 
+        // Jump to relative address (0x18)
+        uint8_t JR_e8();
+
         // Jump relative if zero flag not set (0x20)
         uint8_t JR_NZ_e8();
 
-        // Load 8-bit immediate into register A (0x3E)
-        uint8_t LD_A_n8();
-        
         // Disable master interupt flag (0xF3)
         uint8_t DI();
 
         // Enable master interupt flag (0xFB)
         uint8_t EI();
+
+        // Load value of register A into high I/O memory address specified by 8-bit immediate (0xE0)
+        uint8_t LDH_a8_a();
+
+        // Load value of high I/O memory address specified by 8-bit immediate into register A (0xF0)
+        uint8_t LDH_a_a8();
+
+        // Compare register A with 8-bit immediate (0xFE)
+        uint8_t CP_A_n8();
+
+        // Call 16-bit immediate address (0xCD)
+        uint8_t CALL_a16();
+
+        // Return from subroutine (0xC9)
+        uint8_t RET();
+
+        // Return from subroutine and set IME (0xD9)
+        uint8_t RETI();
+
+        // Halt CPU until next interrupt (0x76)
+        uint8_t HALT();
+
+        // Write value of register A to 16-bit immediate (0xEA)
+        uint8_t LD_a16_A();
+
+        // Store A Indirect Group
+        uint8_t LD_BC_ptr_A(); // 0x02
+        uint8_t LD_DE_ptr_A(); // 0x12
+        uint8_t LD_HL_ptr_A(); // 0x77
+        uint8_t LD_HL_ptr_inc_A(); // 0x22
+        uint8_t LD_HL_ptr_dec_A(); // 0x32
+        
+        // Store SP to 16-bit immediate address (0x08)
+        uint8_t LD_a16_SP();
+
+        // Write value of register A to the I/O address specified by current C register (0xE2)
+        uint8_t LDH_C_A();
+
+        // Increment register A by 1 (0x3C)
+        uint8_t INC_A();
+
+        // Increment register B by 1 (0x04)
+        uint8_t INC_B();
+
+        // Increment register C by 1 (0x0C)
+        uint8_t INC_C();
+
+        // Load 16-bit immediate into register pair group
+        uint8_t LD_BC_n16(); // 0x01
+        uint8_t LD_DE_n16(); // 0x11
+        uint8_t LD_HL_n16(); // 0x21
+        uint8_t LD_SP_n16(); // 0x31
+
+        // Decrement BC register pair by 1 (0x0B)
+        uint8_t DEC_BC();
+
+        // Copy 8-bit value from B register to A register (0x78)
+        uint8_t LD_A_B();
+
+        // Copy value from C register to A register (0x79)
+        uint8_t LD_A_C();
+
+        // Copy value from D register to A register (0x7A)
+        uint8_t LD_A_D();
+
+        // Copy value from E register to A register (0x7B)
+        uint8_t LD_A_E();
+
+        // Copy value from H register to A register (0x7C)
+        uint8_t LD_A_H();
+
+        // Copy value from L register to A register (0x7D)
+        uint8_t LD_A_L();
+
+        // Bitwise OR with A and B register, result in A (0xB0)
+        uint8_t OR_A_B();
+
+        // Bitwise OR with A and C register, result in A (0xB1)
+        uint8_t OR_A_C();
+        
+        // Bitwise OR with A and D register, result in A (0xB2)
+        uint8_t OR_A_D();
+
+        // Bitwise OR with A and E register, result in A (0xB3)
+        uint8_t OR_A_E();
+
+        // Bitwise OR with A and H register, result in A (0xB4)
+        uint8_t OR_A_H();
+
+        // Bitwise OR with A and L register, result in A (0xB5)
+        uint8_t OR_A_L();
+
+        // Bitwise OR with A and value of address pointed to by HL, result in A (0xB6)
+        uint8_t OR_A_HL();
+
+        // Push AF register pair to stack (0xF5)
+        uint8_t PUSH_AF();
+
+        // Push BC register pair to stack (0xC5)
+        uint8_t PUSH_BC();
+
+        // Push DE register pair to stack (0xD5)
+        uint8_t PUSH_DE();
+
+        // Push HL register pair to stack (0xE5)
+        uint8_t PUSH_HL();
+
+        // Bitwise AND between A and A register, result in A (0xA7)
+        uint8_t AND_A_A();
+
+        // Bitwise AND between A and B register, result in A (0xA0)
+        uint8_t AND_A_B();
+
+        // Bitwise AND between A and C register, result in A (0xA1)
+        uint8_t AND_A_C();
+
+        // Bitwise AND between A and D register, result in A (0xA2)
+        uint8_t AND_A_D();
+        
+        // Bitwise AND between A and E register, result in A (0xA3)
+        uint8_t AND_A_E();
+
+        // Bitwise AND between A and H register, result in A (0xA4)
+        uint8_t AND_A_H();
+
+        // Bitwise AND between A and L register, result in A (0xA5)
+        uint8_t AND_A_L();
+
+        // Bitwise AND between A and 8-bit immediate, result in A (0xE6)
+        uint8_t AND_A_n8();
+
+        // Jump relative if zero flag set (0x28)
+        uint8_t JR_Z_e8();
+
+        // Return from subroutine if zero flag not set (0xC0)
+        uint8_t RET_NZ();
+
+        // Return from subroutine if zero flag set (0xC8)
+        uint8_t RET_Z();
+
+        // Load A Indirect Group
+        uint8_t LD_A_BC_ptr(); // 0x0A
+        uint8_t LD_A_DE_ptr(); // 0x1A
+        uint8_t LD_A_HL_ptr(); // 0x7E
+        uint8_t LD_A_a16_ptr(); // 0xFA
+        uint8_t LD_A_HL_ptr_inc(); // 0x2A
+        uint8_t LD_A_HL_ptr_dec(); // 0x3A
+
+        // Increment 8-bit value at HL address by 1 (0x34)
+        uint8_t INC_at_HL();
+
+        // Pop HL register pair from stack (0xE1)
+        uint8_t POP_HL();
+
+        // Pop BC register pair from stack (0xC1)
+        uint8_t POP_BC();
+
+        // Pop DE register pair from stack (0xD1)
+        uint8_t POP_DE();
+
+        // Pop AF register pair from stack (0xF1)
+        uint8_t POP_AF();
+
+        // Bitwise NOT on A register (0x2F)
+        uint8_t CPL();
+        
+        // Extended opcode prefix for specialized instructions (0xCB)
+        uint8_t PREFIX_CB();
+
+        // Copy A register value into B register (0x47)
+        uint8_t LD_B_A();
+
+        // Copy A register value into C register (0x4F)
+        uint8_t LD_C_A();
+
+        // Load r, [HL] Group
+        uint8_t LD_B_HL(); // 0x46
+        uint8_t LD_C_HL(); // 0x4E
+        uint8_t LD_D_HL(); // 0x56
+        uint8_t LD_E_HL(); // 0x5E
+        uint8_t LD_H_HL(); // 0x66
+        uint8_t LD_L_HL(); // 0x6E
+
+        // Load Register E Group
+        uint8_t LD_E_B(); // 0x58
+        uint8_t LD_E_C(); // 0x59
+        uint8_t LD_E_D(); // 0x5A
+        uint8_t LD_E_E(); // 0x5B
+        uint8_t LD_E_H(); // 0x5C
+        uint8_t LD_E_L(); // 0x5D
+        uint8_t LD_E_A(); // 0x5F
+
+        // "Restarts" / calls to fixed addresses
+        uint8_t RST_00(); // 0xC7
+        uint8_t RST_08(); // 0xCF
+        uint8_t RST_10(); // 0xD7
+        uint8_t RST_18(); // 0xDF
+        uint8_t RST_20(); // 0xE7
+        uint8_t RST_28(); // 0xEF
+        uint8_t RST_30(); // 0xF7
+        uint8_t RST_38(); // 0xFF
+
+        // Add A and A register, result in A (0x87)
+        uint8_t ADD_A_A();
+
+        // Add A and B register, result in A (0x80)
+        uint8_t ADD_A_B();
+
+        // Add A and C register, result in A (0x81)
+        uint8_t ADD_A_C();
+
+        // Add A and D register, result in A (0x82)
+        uint8_t ADD_A_D();
+
+        // Add A and E register, result in A (0x83)
+        uint8_t ADD_A_E();
+
+        // Add A and H register, result in A (0x84)
+        uint8_t ADD_A_H();
+
+        // Add A and L register, result in A (0x85)
+        uint8_t ADD_A_L();
+
+        // 16-bit ADD Instructions
+        uint8_t ADD_HL_BC(); // 0x09
+        uint8_t ADD_HL_DE(); // 0x19
+        uint8_t ADD_HL_HL(); // 0x29
+        uint8_t ADD_HL_SP(); // 0x39
+
+        // 16-bit INC Instructions
+        uint8_t INC_BC(); // 0x03
+        uint8_t INC_DE(); // 0x13
+        uint8_t INC_HL(); // 0x23
+        uint8_t INC_SP(); // 0x33
+
+        // Jump to address in HL (0xE9)
+        uint8_t JP_HL();
 };

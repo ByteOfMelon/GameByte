@@ -5,6 +5,9 @@
 #include <sstream>
 #include <iomanip>
 
+class CPU;
+class PPU;
+
 /**
  * @brief Implements the Game Boy's Memory Management Unit (MMU).alignas
  * 
@@ -26,6 +29,12 @@
  */
 class MMU {
     public:
+        CPU* cpu = nullptr;
+        void connect_cpu(CPU* c);
+
+        PPU* ppu = nullptr;
+        void connect_ppu(PPU* p);
+
         uint8_t read_byte(uint16_t address);
         void write_byte(uint16_t address, uint8_t value);
 
