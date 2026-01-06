@@ -17,9 +17,10 @@ include_directories(${SDL3_INCLUDE_DIRS})
 
 # Add your source files here as you create them
 add_executable(GameByte src/main.cpp
-                          # src/core/cpu.cpp
+                          src/core/cpu.cpp
+                          src/core/mmu.cpp
+                          src/core/rom.cpp
                           # src/core/ppu.cpp
-                          # src/core/mmu.cpp
                           # Add other.cpp files as you create them
                           )
 

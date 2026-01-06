@@ -1,115 +1,231 @@
-#include <cstdint>
+#include "cpu.h"
+#include <stdexcept>
+#include <iostream>
+#include <sstream>
+#include <iomanip>
 
-/**
- * @brief Emulates the Game Boy's CPU, specifically the Sharp SM83.
- * 
- * This is an 8-bit CPU that runs at 4.194304 MHz, uses a modified Z80 instruction set, and contains the following registers:
- * 
- * 8-bit General Purpose - A (Accumulator), then B, C, D, E, H and L registers.
- *
- * 16-bit Register Pairs - Combines two 8-bit registers to make 16-bit values. Can be used for pointers or 16-bit operations.
- * 
- * 16-bit Special Purpose Registers - includes the stack pointer (points to current top of stack in RAM) and the program counter (points to address of next instruction in RAM)
- * 
- * Flag Register (F) - 8-bit register where specific bits indicate outcome of arithmetic/logical operations.
- * 
- * Bit 7: Zero Flag (Z) - Set if the result of an operation is zero.
- * Bit 6: Subtract Flag (N) - Set if the last operation was a subtraction.
- * Bit 5: Half Carry Flag (H) - Set if there was a carry from bit 3 to bit 4 during an operation (used for BCD arithmetic).
- * Bit 4: Carry Flag (C) - Set if an operation resulted in a carry out of bit 7 (for additions) or a borrow (for subtractions).
- * Bits 3-0: Not used, always read as zero.
- * 
- * Additionally, the CPU has several interupts: VBlank, LCD STAT, Timer, Serial, and Joypad. The CPU pauses execution upon any of these interupts being triggered, pushes the program counter (PC) onto the stack, and jumps to a specific vector address in RAM.
- */
-class CPU {
-    public:
-        // 8-bit general purpose registers
-        uint8_t a, b, c, d, e, h, l;
+CPU::CPU() {
+    init_instructions();
+    // Initialize registers (simple power-on state, usually PC=0x0100 for post-bootROM)
+    pc = 0x0100;
+    sp = 0xFFFE;
+    a = 0x01; f = 0xB0;
+    b = 0x00; c = 0x13;
+    d = 0x00; e = 0xD8;
+    h = 0x01; l = 0x4D;
+    
+    ime = false; // Interrupts disabled by default
+}
 
-        // Flag register
-        uint8_t f;
+uint16_t CPU::get_af() const { 
+    return (static_cast<uint16_t>(a) << 8) | f;
+}
 
-        // 16-bit registers
-        uint16_t sp; // Stack pointer
-        uint16_t pc; // Program counter
+void CPU::set_af(uint16_t value) {
+    a = (value >> 8) & 0xFF; f = value & 0xF0;
+}
 
-        /**
-         * Getter/setter methods for 16-bit register pairs
-         */
+uint16_t CPU::get_bc() const { 
+    return (static_cast<uint16_t>(b) << 8) | c;
+}
 
-        // AF register pair
-        uint16_t get_af() const { 
-            return (static_cast<uint16_t>(a) << 8) | f;
-        }
+void CPU::set_bc(uint16_t value) {
+    b = (value >> 8) & 0xFF; c = value & 0xFF;
+}
 
-        void set_af(uint16_t value) {
-            a = (value >> 8) & 0xFF; f = value & 0xF0; // Lower 4 bits of F are always 0
-        }
+uint16_t CPU::get_de() const { 
+    return (static_cast<uint16_t>(d) << 8) | e;
+}
 
-        // BC register pair
-        uint16_t get_bc() const { 
-            return (static_cast<uint16_t>(b) << 8) | c;
-        }
+void CPU::set_de(uint16_t value) {
+    d = (value >> 8) & 0xFF; e = value & 0xFF;
+}
 
-        void set_bc(uint16_t value) {
-            b = (value >> 8) & 0xFF; c = value & 0xFF;
-        }
+uint16_t CPU::get_hl() const { 
+    return (static_cast<uint16_t>(h) << 8) | l;
+}
 
-        // DE register pair
-        uint16_t get_de() const { 
-            return (static_cast<uint16_t>(d) << 8) | e;
-        }
+void CPU::set_hl(uint16_t value) {
+    h = (value >> 8) & 0xFF; l = value & 0xFF;
+}
 
-        void set_de(uint16_t value) {
-            d = (value >> 8) & 0xFF; e = value & 0xFF;
-        }
+bool CPU::get_flag_z() const { 
+    return (f & 0x80) != 0; 
+}
 
-        // HL register pair
-        uint16_t get_hl() const { 
-            return (static_cast<uint16_t>(h) << 8) | l;
-        }
+void CPU::set_flag_z(bool value) { 
+    f = (value)? (f | 0x80) : (f & ~0x80);
+}
 
-        void set_hl(uint16_t value) {
-            h = (value >> 8) & 0xFF; l = value & 0xFF;
-        }
+bool CPU::get_flag_n() const { 
+    return (f & 0x40) != 0; 
+}
 
-        /**
-         * Getter/setter methods for flags
-         */
+void CPU::set_flag_n(bool value) { 
+    f = (value)? (f | 0x40) : (f & ~0x40);
+}
 
-        // Z flag (zero flag) - if result of operation was zero
-        bool get_flag_z() const { 
-            return (f & 0x80) != 0; 
-        }
+bool CPU::get_flag_h() const { 
+    return (f & 0x20) != 0; 
+}
 
-        void set_flag_z(bool value) { 
-            f = (value)? (f | 0x80) : (f & ~0x80);
-        }
+void CPU::set_flag_h(bool value) { 
+    f = (value)? (f | 0x20) : (f & ~0x20);
+}
 
-        // N flag (subtract flag) - if result of operation was a subtraction
-        bool get_flag_n() const { 
-            return (f & 0x40) != 0; 
-        }
+bool CPU::get_flag_c() const { 
+    return (f & 0x10) != 0; 
+}
 
-        void set_flag_n(bool value) { 
-            f = (value)? (f | 0x40) : (f & ~0x40);
-        }
+void CPU::set_flag_c(bool value) { 
+    f = (value)? (f | 0x10) : (f & ~0x10);
+}
 
-        // H flag (half carry flag) - if there was a carry from bit 3 to bit 4 during an operation
-        bool get_flag_h() const { 
-            return (f & 0x20) != 0; 
-        }
+void CPU::connect_mmu(MMU* m) {
+    mmu = m;
+}
 
-        void set_flag_h(bool value) { 
-            f = (value)? (f | 0x20) : (f & ~0x20);
-        }
+uint8_t CPU::step() {
+    if (!mmu) {
+        throw std::runtime_error("[CPU] MMU was not connected to CPU before execution");
+    }
 
-        // C flag (carry flag) - if an operation resulted in a carry out of bit 7 (for additions) or a borrow (for subtractions).
-        bool get_flag_c() const { 
-            return (f & 0x10) != 0; 
-        }
+    uint8_t opcode = mmu->read_byte(pc);
+    printf("[CPU] DEBUG: Executing opcode 0x%02X (instruction %s) at address 0x%04X\n", opcode, instructions[opcode].name, pc);
+    pc++;
 
-        void set_flag_c(bool value) { 
-            f = (value)? (f | 0x10) : (f & ~0x10);
-        }
-};
+    uint8_t cycles = (this->*instructions[opcode].operate)();
+
+    total_cycles += cycles;
+    return cycles;
+}
+
+void CPU::init_instructions() {
+    instructions.assign(256, { "XXX", &CPU::XXX });
+    instructions[0x00] = { "NOP", &CPU::NOP };
+    instructions[0xC3] = { "JP a16", &CPU::JP_a16 };
+    instructions[0xAF] = { "XOR A, A", &CPU::XOR_a };
+    instructions[0x21] = { "LD HL, n16", &CPU::LD_HL_n16 };
+    instructions[0x0E] = { "LD C, n8", &CPU::LD_C_n8 };
+    instructions[0x06] = { "LD B, n8", &CPU::LD_B_n8 };
+    instructions[0x31] = { "LD SP, n16", &CPU::LD_SP_n16 };
+    instructions[0x32] = { "LD (HL-), A", &CPU::LD_HLmA_dec };
+    instructions[0x05] = { "DEC B", &CPU::DEC_B };
+    instructions[0x0D] = { "DEC C", &CPU::DEC_C };
+    instructions[0x20] = { "JR NZ, e8", &CPU::JR_NZ_e8 };
+    instructions[0x3E] = { "LD A, n8", &CPU::LD_A_n8 };
+    instructions[0xF3] = { "DI", &CPU::DI };
+    instructions[0xFB] = { "EI", &CPU::EI };
+}
+
+uint8_t CPU::XXX() {
+    uint8_t opcode = mmu->read_byte(pc - 1);
+    std::stringstream ss;
+    ss << "Illegal/unimplemented opcode 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(opcode)
+       << " at 0x" << (pc - 1);
+    throw std::runtime_error("[CPU] " + ss.str());
+    return 0;
+}
+
+uint8_t CPU::NOP() {
+    // No operation
+    return 4;
+}
+
+uint8_t CPU::JP_a16() {
+    pc = mmu->read_word(pc);
+    return 16;
+}
+
+uint8_t CPU::XOR_a() {
+    a ^= a;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+    return 4;
+}
+
+uint8_t CPU::LD_HL_n16() {
+    uint16_t value = mmu->read_word(pc);
+    set_hl(value);
+    pc += 2;
+    return 12;
+}
+
+uint8_t CPU::LD_C_n8() {
+    uint8_t value = mmu->read_byte(pc);
+    c = value;
+    pc++;
+    return 8;
+}
+
+uint8_t CPU::LD_B_n8() {
+    uint8_t value = mmu->read_byte(pc);
+    b = value;
+    pc++;
+    return 8;
+}
+
+uint8_t CPU::LD_SP_n16() {
+    uint16_t value = mmu->read_word(pc);
+    sp = value;
+    pc += 2;
+    return 12;
+}
+
+uint8_t CPU::LD_HLmA_dec() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, a);
+    set_hl(address - 1);
+    return 8;
+}
+
+uint8_t CPU::DEC_B() {
+    // Set half-carry flag if lower nibble (bit 4) is 0
+    set_flag_h((b & 0x0F) == 0);
+
+    b--;
+    set_flag_z(b == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::DEC_C() {
+    // Set half-carry flag if lower nibble (bit 4) is 0
+    set_flag_h((c & 0x0F) == 0);
+
+    c--;
+    set_flag_z(c == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::JR_NZ_e8() {
+    int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
+    pc++;
+
+    if (!get_flag_z()) {
+        pc += offset;
+        return 12;
+    }
+    
+    return 8;
+}
+
+uint8_t CPU::LD_A_n8() {
+    uint8_t value = mmu->read_byte(pc);
+    a = value;
+    pc++;
+    return 8;
+}
+
+uint8_t CPU::DI() {
+    ime = false;
+    return 4;
+}
+
+uint8_t CPU::EI() {
+    ime = true;
+    return 4;
+}
