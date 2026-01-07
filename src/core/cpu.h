@@ -222,6 +222,9 @@ class CPU {
         // Call 16-bit immediate address (0xCD)
         uint8_t CALL_a16();
 
+        // Call 16-bit immediate address if zero flag not set (0xC4)
+        uint8_t CALL_NZ_a16();
+
         // Return from subroutine (0xC9)
         uint8_t RET();
 
@@ -418,6 +421,24 @@ class CPU {
         // Copy A register value into C register (0x4F)
         uint8_t LD_C_A();
 
+        // Copy value of register B into C register (0x48)
+        uint8_t LD_C_B();
+
+        // Copy value of register C into C register (0x49)
+        uint8_t LD_C_C();
+
+        // Copy value of register D into C register (0x4A)
+        uint8_t LD_C_D();
+
+        // Copy value of register E into C register (0x4B)
+        uint8_t LD_C_E();
+
+        // Copy value of register H into C register (0x4C)
+        uint8_t LD_C_H();
+
+        // Copy value of register L into C register (0x4D)
+        uint8_t LD_C_L();
+
         // Load r, [HL] Group
         uint8_t LD_B_HL(); // 0x46
         uint8_t LD_C_HL(); // 0x4E
@@ -518,9 +539,6 @@ class CPU {
 
         // Jump to address in HL (0xE9)
         uint8_t JP_HL();
-
-        // Copy value of register C into C register (0x49)
-        uint8_t LD_C_C();
 
         // Copy value of I/O address pointed to by C register into A register (0xF2)
         uint8_t LDH_A_C_ptr();

@@ -467,6 +467,7 @@ void CPU::init_instructions() {
     instructions[0xBE] = { "CP A, [HL]", &CPU::CP_at_HL };
 
     instructions[0xCD] = { "CALL a16", &CPU::CALL_a16 };
+    instructions[0xC4] = { "CALL NZ, a16", &CPU::CALL_NZ_a16 };
     instructions[0xC9] = { "RET", &CPU::RET };
     instructions[0xD9] = { "RETI", &CPU::RETI };
     instructions[0x76] = { "HALT", &CPU::HALT };
@@ -572,6 +573,13 @@ void CPU::init_instructions() {
     instructions[0x47] = { "LD B, A", &CPU::LD_B_A };
 
     instructions[0x4F] = { "LD C, A", &CPU::LD_C_A };
+    instructions[0x48] = { "LD C, B", &CPU::LD_C_B };
+    instructions[0x49] = { "LD C, C", &CPU::LD_C_C };
+    instructions[0x4A] = { "LD C, D", &CPU::LD_C_D };
+    instructions[0x4B] = { "LD C, E", &CPU::LD_C_E };
+    instructions[0x4C] = { "LD C, H", &CPU::LD_C_H };
+    instructions[0x4D] = { "LD C, L", &CPU::LD_C_L };
+
     instructions[0x4E] = { "LD C, [HL]", &CPU::LD_C_HL };
     instructions[0x56] = { "LD D, [HL]", &CPU::LD_D_HL };
     instructions[0x5E] = { "LD E, [HL]", &CPU::LD_E_HL };
@@ -604,8 +612,6 @@ void CPU::init_instructions() {
     instructions[0x85] = { "ADD A, L", &CPU::ADD_A_L };
 
     instructions[0xE9] = { "JP HL", &CPU::JP_HL };
-    
-    instructions[0x49] = { "LD C, C", &CPU::LD_C_C };
     
     instructions[0xE2] = { "LDH [C], A", &CPU::LDH_C_ptr_A };
     instructions[0xF2] = { "LDH A, [C]", &CPU::LDH_A_C_ptr };
@@ -1066,6 +1072,24 @@ uint8_t CPU::CALL_a16() {
 
     return 24;
 }
+
+uint8_t CPU::CALL_NZ_a16() {
+    uint16_t address = mmu->read_word(pc);
+    pc += 2;
+
+    if (!get_flag_z()) {
+        // Push current PC to stack
+        sp -= 2;
+        mmu->write_word(sp, pc);
+
+        // Jump to address
+        pc = address;
+        return 24;
+    }
+
+    return 12;
+}
+
 
 uint8_t CPU::RET() {
     // Pop address from stack into PC
@@ -1754,6 +1778,36 @@ uint8_t CPU::LD_C_A() {
     return 4;
 }
 
+uint8_t CPU::LD_C_B() {
+    c = b;
+    return 4;
+}
+
+uint8_t CPU::LD_C_C() {
+    // Equivalent to NOP, but added here for consistency
+    return 4;
+}
+
+uint8_t CPU::LD_C_D() {
+    c = d;
+    return 4;
+}
+
+uint8_t CPU::LD_C_E() {
+    c = e;
+    return 4;
+}
+
+uint8_t CPU::LD_C_H() {
+    c = h;
+    return 4;
+}
+
+uint8_t CPU::LD_C_L() {
+    c = l;
+    return 4;
+}
+
 uint8_t CPU::LD_E_B() {
     e = b;
     return 4;
@@ -2100,11 +2154,6 @@ uint8_t CPU::INC_SP() {
 
 uint8_t CPU::JP_HL() {
     pc = get_hl();
-    return 4;
-}
-
-uint8_t CPU::LD_C_C() {
-    // Equivalent to NOP, but added here for consistency
     return 4;
 }
 

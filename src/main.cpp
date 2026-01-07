@@ -1,5 +1,22 @@
 #include <iostream>
 #include <SDL3/SDL.h>
+#include <string>
+
+// Structure to hold file dialog state
+struct DialogState {
+    bool complete = false;
+    std::string selected_path;
+};
+
+// Callback function for file dialog
+void SDLCALL file_dialog_callback(void* userdata, const char* const* filelist, int filter_count) {
+    DialogState* state = static_cast<DialogState*>(userdata);
+    if (filelist && *filelist) {
+        // filelist is a null-terminated array of strings
+        state->selected_path = *filelist;
+    }
+    state->complete = true;
+}
 
 #include "core/cpu.h"
 #include "core/mmu.h"
@@ -42,10 +59,34 @@ int main(int argc, char* argv[]) {
     SDL_Event e;
     bool frame_drawn_this_vblank = false;
 
-    if (ROM::load("tetris.gb")) {
+    // Open file dialog to select ROM file
+    DialogState dialog_state;
+    const SDL_DialogFileFilter filters[] = {
+        { "Game Boy ROM", "gb" }
+    };
+
+    SDL_ShowOpenFileDialog(file_dialog_callback, &dialog_state, nullptr, filters, 1, ".", false);
+
+    // Wait for the dialog to be closed
+    while (!dialog_state.complete) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) return 0;
+        }
+        SDL_Delay(10);
+    }
+
+    // If user cancelled the dialog, close app
+    if (dialog_state.selected_path.empty()) {
+        return 0;
+    }
+
+    // Attempt to load ROM from path
+    if (ROM::load(dialog_state.selected_path.c_str())) {
         mmu.load_game(ROM::data, ROM::size);
     } else {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Initialization Error", "Failed to load Tetris ROM! Make sure you've placed a valid Tetris ROM file named tetris.gb alongside this executable.", nullptr);
+        std::string error_msg = "Failed to load ROM: " + dialog_state.selected_path;
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Initialization Error", error_msg.c_str(), nullptr);
         return 1;
     }
 

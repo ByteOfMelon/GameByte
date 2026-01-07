@@ -23,7 +23,7 @@ GameByte uses a standard CMake file to do its builds. Currently, builds are offi
 You can build with a regular CMake build command, or utilize the VS Code launch tasks to quickly build and run the project in debug mode.
 
 # Running
-You will need to provide your own Tetris ROM file from a legal source and place it alongside the executable in a file called `tetris.gb`. GameByte will only work with Tetris currently.
+You will need to provide your own Game Boy ROM file from a legal source. GameByte will open a file selection dialog and ask you to provide a .gb ROM file.F
 
 # Compatibility
 GameByte is a research emulator that is not intended to be fully accurate or usable with a lot of Game Boy games. However, a compatibility list showing tested games are listed below.
@@ -36,7 +36,8 @@ GameByte is a research emulator that is not intended to be fully accurate or usa
 
 ## Compatibility List
 
-| **Game Title**   | **Publisher** | **Year** | **State** |
-|------------------|---------------|----------|-----------|
-| Tetris           | Nintendo      | 1989     | Playable  |
-| Every other game | Anyone        | Any time | Nothing   |
+| **Game Title**                 | **Publisher** | **Year** | **State** |
+|--------------------------------|---------------|----------|-----------|
+| Tetris                         | Nintendo      | 1989     | Playable  |
+| Dr. Mario                      | Nintendo      | 1990     | Menus     |
+| (Pretty much) Every other game | Anyone        | Any time | Nothing   |
