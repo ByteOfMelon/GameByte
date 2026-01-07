@@ -42,9 +42,12 @@ jobs:
           cmake -S vendored/SDL -B build-sdl -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
           cmake --build build-sdl --target install
 
-      - name: Configure and Build GameByte
+      - name: Configure and Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL3_DIR=${{ github.workspace }}/sdl3-install/lib/cmake/SDL3 \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
           cmake --build build --config Release
 
       - name: Upload Artifact

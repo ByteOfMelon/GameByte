@@ -39,3 +39,6 @@ build/
 
 # Debug logs
 gamebyte.log
+
+# macOS system files
+.DS_Store

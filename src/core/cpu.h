@@ -317,6 +317,9 @@ class CPU {
         // Bitwise OR with A and value of address pointed to by HL, result in A (0xB6)
         uint8_t OR_A_HL();
 
+        // Bitwise OR with A and 8-bit immediate, result in A (0xF6)
+        uint8_t OR_A_n8();
+
         // Push AF register pair to stack (0xF5)
         uint8_t PUSH_AF();
 
@@ -516,6 +519,41 @@ class CPU {
         // Flip carry flag bit, reset N and H flags (0x3F)
         uint8_t CCF();
 
+        // Load into L register group
+        uint8_t LD_L_A(); // 0x6F
+        uint8_t LD_L_C(); // 0x69
+        uint8_t LD_L_E(); // 0x6B
+
+        // Load into register H group
+        uint8_t LD_H_A(); // 0x67
+        uint8_t LD_H_B(); // 0x60
+        uint8_t LD_H_C(); // 0x61
+        uint8_t LD_H_D(); // 0x62
+        uint8_t LD_H_E(); // 0x63
+        uint8_t LD_H_H(); // 0x64
+        uint8_t LD_H_L(); // 0x65
+
+        // Load into D register group 
+        uint8_t LD_D_A(); // 0x57
+        uint8_t LD_D_H(); // 0x54
+
+        // Write value of register B into address pointed to by HL (0x70)
+        uint8_t LD_at_HL_B();
+
+        // Write value of register C into address pointed to by HL (0x71)
+        uint8_t LD_at_HL_C();
+
+        // Write value of register D into address pointed to by HL (0x72)
+        uint8_t LD_at_HL_D();
+        
+        // Write value of register E into address pointed to by HL (0x73)
+        uint8_t LD_at_HL_E();
+        
+        // Write value of register H into address pointed to by HL (0x74)
+        uint8_t LD_at_HL_H();
+        
+        // Write value of register L into address pointed to by HL (0x75)
+        uint8_t LD_at_HL_L();
     private:
         // Performs addition (ADD/ADC) and updates flags
         // carry: if true, adds the C flag to the sum

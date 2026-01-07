@@ -525,6 +525,7 @@ void CPU::init_instructions() {
     instructions[0xB4] = { "OR A, H", &CPU::OR_A_H };
     instructions[0xB5] = { "OR A, L", &CPU::OR_A_L };
     instructions[0xB6] = { "OR A, [HL]", &CPU::OR_A_HL };
+    instructions[0xF6] = { "OR A, n8", &CPU::OR_A_n8 };
 
     instructions[0xF5] = { "PUSH AF", &CPU::PUSH_AF };
     instructions[0xC5] = { "PUSH BC", &CPU::PUSH_BC };
@@ -638,6 +639,27 @@ void CPU::init_instructions() {
     instructions[0xDE] = { "SBC A, n8", &CPU::SBC_A_n8 };
 
     instructions[0xA6] = { "AND A, [HL]", &CPU::AND_A_HL };
+    instructions[0x6F] = { "LD L, A", &CPU::LD_L_A };
+    instructions[0x69] = { "LD L, C", &CPU::LD_L_C };
+    instructions[0x6B] = { "LD L, E", &CPU::LD_L_E };
+
+    instructions[0x60] = { "LD H, B", &CPU::LD_H_B };
+    instructions[0x61] = { "LD H, C", &CPU::LD_H_C };
+    instructions[0x62] = { "LD H, D", &CPU::LD_H_D };
+    instructions[0x63] = { "LD H, E", &CPU::LD_H_E };
+    instructions[0x64] = { "LD H, H", &CPU::LD_H_H };
+    instructions[0x65] = { "LD H, L", &CPU::LD_H_L };
+    instructions[0x67] = { "LD H, A", &CPU::LD_H_A };
+
+    instructions[0x54] = { "LD D, H", &CPU::LD_D_H };
+    instructions[0x57] = { "LD D, A", &CPU::LD_D_A };
+
+    instructions[0x70] = { "LD (HL), B", &CPU::LD_at_HL_B };
+    instructions[0x71] = { "LD (HL), C", &CPU::LD_at_HL_C };
+    instructions[0x72] = { "LD (HL), D", &CPU::LD_at_HL_D };
+    instructions[0x73] = { "LD (HL), E", &CPU::LD_at_HL_E };
+    instructions[0x74] = { "LD (HL), H", &CPU::LD_at_HL_H };
+    instructions[0x75] = { "LD (HL), L", &CPU::LD_at_HL_L };
 }
 
 uint8_t CPU::XXX() {
@@ -1395,6 +1417,19 @@ uint8_t CPU::OR_A_HL() {
     return 8;
 }
 
+uint8_t CPU::OR_A_n8() {
+    uint8_t value = mmu->read_byte(pc);
+    pc++;
+
+    a |= value;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+
+    return 8;
+}
+
 uint8_t CPU::PUSH_AF() {
     sp -= 2;
     mmu->write_word(sp, get_af());
@@ -2111,3 +2146,105 @@ uint8_t CPU::SBC_A_H() { alu_sub(h, get_flag_c()); return 4; }
 uint8_t CPU::SBC_A_L() { alu_sub(l, get_flag_c()); return 4; }
 uint8_t CPU::SBC_A_HL() { alu_sub(mmu->read_byte(get_hl()), get_flag_c()); return 8; }
 uint8_t CPU::SBC_A_n8() { alu_sub(mmu->read_byte(pc++), get_flag_c()); return 8; }
+
+uint8_t CPU::LD_L_A() {
+    l = a;
+    return 4;
+}
+
+uint8_t CPU::LD_L_C() {
+    l = c;
+    return 4;
+}
+
+uint8_t CPU::LD_L_E() {
+    l = e;
+    return 4;
+}
+
+uint8_t CPU::LD_H_A() {
+    h = a;
+    return 4;
+}
+
+uint8_t CPU::LD_H_B() {
+    h = b;
+    return 4;
+}
+
+uint8_t CPU::LD_H_C() {
+    h = c;
+    return 4;
+}
+
+uint8_t CPU::LD_H_D() {
+    h = d;
+    return 4;
+}
+
+uint8_t CPU::LD_H_E() {
+    h = e;
+    return 4;
+}
+
+uint8_t CPU::LD_H_H() {
+    // NOP equivalent, here for consistency
+    return 4;
+}
+
+uint8_t CPU::LD_H_L() {
+    h = l;
+    return 4;
+}
+
+uint8_t CPU::LD_D_A() {
+    d = a;
+    return 4;
+}
+
+uint8_t CPU::LD_D_H() {
+    d = h;
+    return 4;
+}
+
+uint8_t CPU::LD_at_HL_B() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, b);
+    
+    return 8;
+}
+
+uint8_t CPU::LD_at_HL_C() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, c);
+    
+    return 8;
+}
+
+uint8_t CPU::LD_at_HL_D() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, d);
+    
+    return 8;
+}
+
+uint8_t CPU::LD_at_HL_E() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, e);
+    
+    return 8;
+}
+
+uint8_t CPU::LD_at_HL_H() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, h);
+    
+    return 8;
+}
+
+uint8_t CPU::LD_at_HL_L() {
+    uint16_t address = get_hl();
+    mmu->write_byte(address, l);
+    
+    return 8;
+}

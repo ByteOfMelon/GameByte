@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.16) # Or a newer version like 3.15+ for SDL3
 project(GameByte LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17) # Or your preferred C++ standard (e.g., 14, 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 if(APPLE)
-    # Explicitly set Clang on macOS if needed, but usually default is fine
-    # set(CMAKE_CXX_COMPILER "/usr/bin/clang++") 
-elseif(WIN32)
-    # Windows typically uses MSVC or Clang-CL, no need to force /usr/bin/clang++
+    # Use @rpath for dynamic libraries
+    set(CMAKE_MACOSX_RPATH 1)
+    # Search for libraries in the same folder as the executable
+    set(CMAKE_INSTALL_RPATH "@executable_path/")
+    # Apply these paths even during the build phase (important for the GitHub runner)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
 
 # set the output directory for built objects.
