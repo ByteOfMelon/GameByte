@@ -41,8 +41,8 @@ int main(int argc, char* argv[]) {
     if (ROM::load("tetris.gb")) {
         mmu.load_game(ROM::data, ROM::size);
     } else {
-        std::cerr << "[GameByte] Failed to load ROM!" << std::endl;
-        // Optionally exit or continue
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Initialization Error", "Failed to load Tetris ROM! Make sure you've placed a valid Tetris ROM file named tetris.gb alongside this executable.", nullptr);
+        return 1;
     }
 
     // Main emulation loop
@@ -87,8 +87,9 @@ int main(int argc, char* argv[]) {
             } catch (const std::exception& e) {
                 std::cerr << "[GameByte] Emulation error about to occur. Total cycles we got through: " << cpu.total_cycles << std::endl;
                 std::cerr << e.what() << std::endl;
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Execution Error", e.what(), nullptr);
                 running = false; // Stop on error
-                break;
+                return 1;
             }
         }
 

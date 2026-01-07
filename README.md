@@ -21,3 +21,6 @@ git submodule update --init --recursive
 GameByte uses a standard CMake file to do its builds. Currently, builds are officially supported for Windows and macOS, with Linux testing possibly coming at a later point.
 
 You can build with a regular CMake build command, or utilize the VS Code launch tasks to quickly build and run the project in debug mode.
+
+# Running
+You will need to provide your own Tetris ROM file from a legal source and place it alongside the executable in a file called `tetris.gb`. GameByte will only work with Tetris currently.
