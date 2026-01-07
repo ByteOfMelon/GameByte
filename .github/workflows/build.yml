@@ -26,7 +26,13 @@ jobs:
         shell: bash
         run: |
           # Bundling the DLL with the EXE so it actually runs
-          cp build/_deps/sdl-build/Release/SDL3.dll build/Release/
+          DLL_PATH=$(find build -name "SDL3.dll" | grep Release | head -n 1)
+          if [ -z "$DLL_PATH" ]; then
+            echo "Error: SDL3.dll not found!"
+            exit 1
+          fi
+          echo "Found SDL3.dll at: $DLL_PATH"
+          cp "$DLL_PATH" build/Release/
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -43,13 +49,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Dependencies
-        run: brew install sdl3
-
-      - name: Configure and Build
+      - name: Build SDL3
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
+          cmake -S vendored/SDL -B build-sdl -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
+          cmake --build build-sdl --target install
+
+      - name: Configure and Build GameByte
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
+          cmake --build build --config Release
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -57,3 +65,5 @@ jobs:
           name: GameByte-macOS
           path: |
             build/GameByte
+            build/Release/GameByte
+            sdl3-install/lib/libSDL3*.dylib
