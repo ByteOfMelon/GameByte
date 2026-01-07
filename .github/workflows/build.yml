@@ -1,0 +1,66 @@
+name: Build GameByte
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: ${{ matrix.os }} Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # Windows Configuration
+    # Uses the 'vendored/SDL' via add_subdirectory as per CMakeLists.txt
+    - name: Configure CMake (Windows)
+      if: runner.os == 'Windows'
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build (Windows)
+      if: runner.os == 'Windows'
+      run: cmake --build build --config Release
+
+    # macOS Configuration
+    # Needs SDL3 installed/available for find_package(SDL3).
+    # We build the vendored SDL3 first and install it to a local directory.
+    - name: Build SDL3 (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cmake -S vendored/SDL -B build-sdl -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
+        cmake --build build-sdl --target install
+
+    - name: Configure CMake (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
+
+    - name: Build (macOS)
+      if: runner.os == 'macOS'
+      run: cmake --build build --config Release
+
+    # Upload Artifacts
+    - name: Upload Artifact (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: GameByte-Windows
+        path: build/Release/GameByte.exe
+
+    - name: Upload Artifact (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: GameByte-macOS
+        path: |
+          build/GameByte
+          build/Release/GameByte
