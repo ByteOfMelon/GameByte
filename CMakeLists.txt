@@ -1,13 +1,32 @@
-cmake_minimum_required(VERSION 3.10) # Or a newer version like 3.15+ for SDL3
+cmake_minimum_required(VERSION 3.16) # Or a newer version like 3.15+ for SDL3
 project(GameByte LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17) # Or your preferred C++ standard (e.g., 14, 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++") # Explicitly set Clang on macOS if needed
+if(APPLE)
+    # Explicitly set Clang on macOS if needed, but usually default is fine
+    # set(CMAKE_CXX_COMPILER "/usr/bin/clang++") 
+elseif(WIN32)
+    # Windows typically uses MSVC or Clang-CL, no need to force /usr/bin/clang++
+endif()
+
+# set the output directory for built objects.
+# This makes sure that the dynamic library goes into the build directory automatically.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+
+# prevent installing to system directories. 
+set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}" CACHE INTERNAL "")
 
 # Find SDL3
-find_package(SDL3 REQUIRED)
-include_directories(${SDL3_INCLUDE_DIRS})
+if(WIN32)
+    # Build SDL3 from source on Windows (vendored)
+    add_subdirectory(vendored/SDL)
+else()
+    # On macOS/Linux types, look for system SDL3
+    find_package(SDL3 REQUIRED)
+    # include_directories(${SDL3_INCLUDE_DIRS}) # Not strictly needed if using target_link_libraries with SDL3::SDL3
+endif()
 
 # If you installed SDL3 extension libraries (names might vary):
 # find_package(SDL3_image REQUIRED)
@@ -25,7 +44,11 @@ add_executable(GameByte src/main.cpp
                           )
 
 # Link against SDL3
-target_link_libraries(GameByte PRIVATE SDL3::SDL3) # Modern CMake target for SDL3
+if(WIN32)
+    target_link_libraries(GameByte PRIVATE SDL3::SDL3)
+else()
+    target_link_libraries(GameByte PRIVATE SDL3::SDL3)
+endif()
 
 # If you installed SDL3 extension libraries (names might vary):
 # target_link_libraries(GameByte PRIVATE SDL3::SDL3_image SDL3::SDL3_ttf)

@@ -103,6 +103,9 @@ class CPU {
         // Returns the number of cycles consumed
         uint8_t step();
 
+        // Debug the status of interupts
+        void debug_interrupt_status();
+
         // Implement extended opcodes (0xCB prefix)
         uint8_t execute_cb_instruction(uint8_t opcode);
 
@@ -122,6 +125,18 @@ class CPU {
 
         // Jump to 16-bit absolute address (0xC3)
         uint8_t JP_a16();
+
+        // Jump to 16-bit absolute address if zero flag not set (0xC2)
+        uint8_t JP_NZ_a16();
+
+        // Jump to 16-bit absolute address if zero flag is set (0xCA)
+        uint8_t JP_Z_a16();
+
+        // Jump to 16-bit absolute address if carry flag not set (0xD2)
+        uint8_t JP_NC_a16();
+
+        // Jump to 16-bit absolute address if carry flag is set (0xDA)
+        uint8_t JP_C_a16();
 
         // XOR A with A (0xAF)
         uint8_t XOR_A_A();
@@ -150,7 +165,6 @@ class CPU {
         uint8_t LD_H_n8(); // 0x26
         uint8_t LD_L_n8(); // 0x2E
         uint8_t LD_HL_n8(); // 0x36
-
         
         // Decrement register A by 1 (0x3D)
         uint8_t DEC_A();
@@ -160,6 +174,21 @@ class CPU {
 
         // Decrement register C (0x0D)
         uint8_t DEC_C();
+
+        // Decrement register D (0x15)
+        uint8_t DEC_D();
+
+        // Decrement register E (0x1D)
+        uint8_t DEC_E();
+
+        // Decrement register H (0x25)
+        uint8_t DEC_H();
+
+        // Decrement register L (0x2D)
+        uint8_t DEC_L();
+
+        // Decrement value pointed to by HL (0x35)
+        uint8_t DEC_at_HL();
 
         // Jump to relative address (0x18)
         uint8_t JR_e8();
@@ -179,8 +208,16 @@ class CPU {
         // Load value of high I/O memory address specified by 8-bit immediate into register A (0xF0)
         uint8_t LDH_a_a8();
 
-        // Compare register A with 8-bit immediate (0xFE)
-        uint8_t CP_A_n8();
+        // Compare family
+        uint8_t CP_A_n8(); // 0xFE
+        uint8_t CP_A_A();  // 0xBF
+        uint8_t CP_A_B();  // 0xB8
+        uint8_t CP_A_C();  // 0xB9
+        uint8_t CP_A_D();  // 0xBA
+        uint8_t CP_A_E();  // 0xBB
+        uint8_t CP_A_H();  // 0xBC
+        uint8_t CP_A_L();  // 0xBD
+        uint8_t CP_at_HL(); // 0xBE
 
         // Call 16-bit immediate address (0xCD)
         uint8_t CALL_a16();
@@ -210,14 +247,15 @@ class CPU {
         // Write value of register A to the I/O address specified by current C register (0xE2)
         uint8_t LDH_C_A();
 
-        // Increment register A by 1 (0x3C)
-        uint8_t INC_A();
-
-        // Increment register B by 1 (0x04)
-        uint8_t INC_B();
-
-        // Increment register C by 1 (0x0C)
-        uint8_t INC_C();
+        // 8-bit Increment Group
+        uint8_t INC_A(); // 0x3C
+        uint8_t INC_B(); // 0x04
+        uint8_t INC_C(); // 0x0C
+        uint8_t INC_D(); // 0x14
+        uint8_t INC_E(); // 0x1C
+        uint8_t INC_H(); // 0x24
+        uint8_t INC_L(); // 0x2C
+        uint8_t INC_at_HL(); // 0x34
 
         // Load 16-bit immediate into register pair group
         uint8_t LD_BC_n16(); // 0x01
@@ -227,6 +265,15 @@ class CPU {
 
         // Decrement BC register pair by 1 (0x0B)
         uint8_t DEC_BC();
+
+        // Decrement DE register pair by 1 (0x1B)
+        uint8_t DEC_DE();
+
+        // Decrement HL register pair by 1 (0x2B)
+        uint8_t DEC_HL();
+
+        // Decrement SP register pair by 1 (0x3B)
+        uint8_t DEC_SP();
 
         // Copy 8-bit value from B register to A register (0x78)
         uint8_t LD_A_B();
@@ -245,6 +292,9 @@ class CPU {
 
         // Copy value from L register to A register (0x7D)
         uint8_t LD_A_L();
+        
+        // Copy 8-bit value from A register to A register (0x7F)
+        uint8_t LD_A_A();
 
         // Bitwise OR with A and B register, result in A (0xB0)
         uint8_t OR_A_B();
@@ -320,9 +370,6 @@ class CPU {
         uint8_t LD_A_HL_ptr_inc(); // 0x2A
         uint8_t LD_A_HL_ptr_dec(); // 0x3A
 
-        // Increment 8-bit value at HL address by 1 (0x34)
-        uint8_t INC_at_HL();
-
         // Pop HL register pair from stack (0xE1)
         uint8_t POP_HL();
 
@@ -341,8 +388,14 @@ class CPU {
         // Extended opcode prefix for specialized instructions (0xCB)
         uint8_t PREFIX_CB();
 
-        // Copy A register value into B register (0x47)
-        uint8_t LD_B_A();
+        // Load Register B Group
+        uint8_t LD_B_B(); // 0x40
+        uint8_t LD_B_C(); // 0x41
+        uint8_t LD_B_D(); // 0x42
+        uint8_t LD_B_E(); // 0x43
+        uint8_t LD_B_H(); // 0x44
+        uint8_t LD_B_L(); // 0x45
+        uint8_t LD_B_A(); // 0x47
 
         // Copy A register value into C register (0x4F)
         uint8_t LD_C_A();
@@ -394,6 +447,44 @@ class CPU {
 
         // Add A and L register, result in A (0x85)
         uint8_t ADD_A_L();
+        uint8_t ADD_A_HL(); // 0x86
+        uint8_t ADD_A_n8(); // 0xC6
+
+        // ADC Group
+        uint8_t ADC_A_A(); // 0x8F
+        uint8_t ADC_A_B(); // 0x88
+        uint8_t ADC_A_C(); // 0x89
+        uint8_t ADC_A_D(); // 0x8A
+        uint8_t ADC_A_E(); // 0x8B
+        uint8_t ADC_A_H(); // 0x8C
+        uint8_t ADC_A_L(); // 0x8D
+        uint8_t ADC_A_HL(); // 0x8E
+        uint8_t ADC_A_n8(); // 0xCE
+
+        // SUB Group
+        uint8_t SUB_A_A(); // 0x97
+        uint8_t SUB_A_B(); // 0x90
+        uint8_t SUB_A_C(); // 0x91
+        uint8_t SUB_A_D(); // 0x92
+        uint8_t SUB_A_E(); // 0x93
+        uint8_t SUB_A_H(); // 0x94
+        uint8_t SUB_A_L(); // 0x95
+        uint8_t SUB_A_HL(); // 0x96
+        uint8_t SUB_A_n8(); // 0xD6
+
+        // SBC Group
+        uint8_t SBC_A_A(); // 0x9F
+        uint8_t SBC_A_B(); // 0x98
+        uint8_t SBC_A_C(); // 0x99
+        uint8_t SBC_A_D(); // 0x9A
+        uint8_t SBC_A_E(); // 0x9B
+        uint8_t SBC_A_H(); // 0x9C
+        uint8_t SBC_A_L(); // 0x9D
+        uint8_t SBC_A_HL(); // 0x9E
+        uint8_t SBC_A_n8(); // 0xDE
+
+        // AND Indirect
+        uint8_t AND_A_HL(); // 0xA6
 
         // 16-bit ADD Instructions
         uint8_t ADD_HL_BC(); // 0x09
@@ -409,4 +500,28 @@ class CPU {
 
         // Jump to address in HL (0xE9)
         uint8_t JP_HL();
+
+        // Copy value of register C into C register (0x49)
+        uint8_t LD_C_C();
+
+        // Copy value of I/O address pointed to by C register into A register (0xF2)
+        uint8_t LDH_A_C_ptr();
+
+        // Copy value of A register into I/O address pointed to by C register (0xE2)
+        uint8_t LDH_C_ptr_A();
+
+        // Force carry flag to be 1, reset N and H flags (0x37)
+        uint8_t SCF();
+
+        // Flip carry flag bit, reset N and H flags (0x3F)
+        uint8_t CCF();
+
+    private:
+        // Performs addition (ADD/ADC) and updates flags
+        // carry: if true, adds the C flag to the sum
+        void alu_add(uint8_t val, bool carry);
+
+        // Helper: Performs Subtraction (SUB/SBC) and updates flags
+        // carry: if true, subtracts the C flag from the result
+        void alu_sub(uint8_t val, bool carry);
 };

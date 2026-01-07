@@ -29,6 +29,8 @@ class PPU;
  */
 class MMU {
     public:
+        MMU();
+
         CPU* cpu = nullptr;
         void connect_cpu(CPU* c);
 
@@ -42,6 +44,10 @@ class MMU {
         void write_word(uint16_t address, uint16_t value);
         
         bool load_game(const uint8_t* data, size_t size);
+
+        // Debug functions to dump HRAM/VRAM contents
+        void dump_hram();
+        void dump_vram();
     private:
         unsigned char cart[0x8000]; // 32 KB total cartridge ROM space
         unsigned char vram[0x2000]; // 8 KB of video RAM (VRAM)

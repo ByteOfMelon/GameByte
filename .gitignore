@@ -36,3 +36,6 @@
 
 # Build folder
 build/
+
+# Debug logs
+gamebyte.log

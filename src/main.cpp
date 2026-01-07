@@ -14,12 +14,13 @@ int main(int argc, char* argv[]) {
     // Base components and connections
     MMU mmu;
     CPU cpu;
-    cpu.connect_mmu(&mmu);
-    mmu.connect_cpu(&cpu);
-    ROM rom;
     PPU ppu;
+    ROM rom;
+
     ppu.connect_mmu(&mmu);
     mmu.connect_ppu(&ppu);
+    cpu.connect_mmu(&mmu);
+    mmu.connect_cpu(&cpu);
 
     // Initialization
     std::cout << "[GameByte] Initializing GameByte..." << std::endl;
@@ -45,7 +46,15 @@ int main(int argc, char* argv[]) {
     }
 
     // Main emulation loop
+    uint32_t frame_count = 0;
     while (running) {
+        frame_count++;
+
+        // Debug - initial VRAM dump
+        if (frame_count == 60) {
+            mmu.dump_vram();
+        }
+        
         uint64_t start_time = SDL_GetTicks();
         int cycles_this_frame = 0;
 
@@ -56,28 +65,25 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Temp breakpoint for tile render event in Tetris
-        if (cpu.pc == 0x2817) {
-            std::cout << "[GameByte] Reached PC 0x2817 (first tile render event in Tetris), stopping emulation for debugging." << std::endl;
-            running = false;
-        }
-
         // Run CPU for one frame
         while (cycles_this_frame < CYCLES_PER_FRAME) {
             try {
-                // Initalize cycle count and check for halting
-                int cycles = 0;
-                if (!cpu.halted) {
-                    cycles = cpu.step();
-                } else {
-                    cycles = 4;
-                }
-
-                cycles += cpu.handle_interrupts();
+                int cycles = cpu.step();
                 cycles_this_frame += cycles;
                 
                 cpu.tick_timers(cycles);
                 ppu.tick(cycles);
+
+                // Check if frame is ready to be drawn
+                if (ppu.get_ly() == 144) {
+                    if (!frame_drawn_this_vblank) {
+                        ppu.render_frame();
+                        frame_drawn_this_vblank = true;
+                    }
+                } else if (ppu.get_ly() != 144) {
+                    // Only allow a new draw once the PPU leaves the V-Blank trigger line
+                    frame_drawn_this_vblank = false;
+                }
             } catch (const std::exception& e) {
                 std::cerr << "[GameByte] Emulation error about to occur. Total cycles we got through: " << cpu.total_cycles << std::endl;
                 std::cerr << e.what() << std::endl;
@@ -86,8 +92,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Render frame
-        ppu.render_frame();
+        // Debug key
+        const bool* keys = SDL_GetKeyboardState(NULL);
+        if (keys[SDL_SCANCODE_F1]) {
+            mmu.dump_vram();
+        }
 
         // Timing synchronization
         uint64_t end_time = SDL_GetTicks();

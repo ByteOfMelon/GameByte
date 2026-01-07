@@ -102,7 +102,53 @@ void CPU::connect_mmu(MMU* m) {
 }
 
 void CPU::tick_timers(uint8_t cycles) {
+    // Save old counter to check for falling edges
+    uint16_t old_counter = internal_counter;
     internal_counter += cycles;
+
+    // Get TAC register (timer control)
+    uint8_t tac = mmu->read_byte(0xFF07);
+
+    // If timer is enabled
+    if (tac & 0x04) {
+        // Determine the bit we are watching for a falling edge on
+
+        // Reference:
+        // 00: 4096 Hz   = Bit 9
+        // 01: 262144 Hz = Bit 3
+        // 10: 65536 Hz  = Bit 5
+        // 11: 16384 Hz  = Bit 7
+        uint16_t bit_mask = 0;
+        switch (tac & 0x03) {
+            case 0x00: bit_mask = (1 << 9); break;
+            case 0x01: bit_mask = (1 << 3); break;
+            case 0x02: bit_mask = (1 << 5); break;
+            case 0x03: bit_mask = (1 << 7); break;
+        }
+
+        // Check for falling edge: was high, now low
+        bool old_bit = (old_counter & bit_mask);
+        bool new_bit = (internal_counter & bit_mask);
+
+        if (old_bit && !new_bit) {
+            // Increment TIMA
+            uint8_t tima = mmu->read_byte(0xFF05);
+            tima++;
+            
+            // Check for overflow (0xFF -> 0x00)
+            if (tima == 0x00) {
+                // Determine value to reload from TMA
+                uint8_t tma = mmu->read_byte(0xFF06);
+                tima = tma;
+
+                // Request timer interrupt (Bit 2 of IF)
+                uint8_t if_reg = mmu->read_byte(0xFF0F);
+                mmu->write_byte(0xFF0F, if_reg | 0x04);
+            }
+
+            mmu->write_byte(0xFF05, tima);
+        }
+    }
 } 
 
 void CPU::reset_internal_counter() {
@@ -121,12 +167,36 @@ uint8_t CPU::handle_interrupts() {
 
     if (ime && pending > 0) {
         // Services the highest priority interrupt first
+
+        // Priority 1: V-Blank (0x0040)
         if (pending & 0x01) {
             printf("[INTERRUPT] Dispatching to 0x0040!\n");
             return execute_interrupt(0, 0x0040);
         }
 
-        // TODO: Add other interrupts here later (LCD STAT, Timer, Serial, Joypad)
+        // Priority 2: LCD STAT (0x0048)
+        if (pending & 0x02) {
+            printf("[INTERRUPT] Dispatching to 0x0048!\n");
+            return execute_interrupt(1, 0x0048);
+        }
+
+        // Priority 3: Timer (0x0050)
+        if (pending & 0x04) {
+            printf("[INTERRUPT] Dispatching to 0x0050!\n");
+            return execute_interrupt(2, 0x0050);
+        }
+
+        // Priority 4: Serial (0x0058)
+        if (pending & 0x08) {
+            printf("[INTERRUPT] Dispatching to 0x0058!\n");
+            return execute_interrupt(3, 0x0058);
+        }
+
+        // Priority 5: Joypad (0x0060)
+        if (pending & 0x10) {
+            printf("[INTERRUPT] Dispatching to 0x0060!\n");
+            return execute_interrupt(4, 0x0060);
+        }
     }
 
     // If no interupts needed servicing, return 0 cycles
@@ -157,13 +227,28 @@ uint8_t CPU::step() {
         throw std::runtime_error("[CPU] MMU was not connected to CPU before execution");
     }
 
+    // Interupt handling
+    uint8_t int_cycles = handle_interrupts();
+    if (int_cycles > 0) {
+        total_cycles += int_cycles;
+        return int_cycles; 
+    }
+
+    // If halted, skip instruction execution
+    if (halted) {
+        total_cycles += 4;
+        return 4;
+    }
+
     uint8_t opcode = mmu->read_byte(pc);
-    printf("[CPU] DEBUG: Executing opcode 0x%02X (instruction %s) at address 0x%04X\n", opcode, instructions[opcode].name, pc);
+
+    // Enabling the below debug line will produce a LOT of output and cause significant slowdown
+    // printf("[CPU] DEBUG: Executing opcode 0x%02X (instruction %s) at address 0x%04X\n", opcode, instructions[opcode].name, pc);
     pc++;
 
     uint8_t cycles = (this->*instructions[opcode].operate)();
 
-    // Handle IME
+    // Handle IME delay
     if (this->ime_delay > 0) {
         this->ime_delay--;
         if (this->ime_delay == 0) {
@@ -173,6 +258,24 @@ uint8_t CPU::step() {
 
     total_cycles += cycles;
     return cycles;
+}
+
+void CPU::debug_interrupt_status() {
+    uint8_t if_reg = mmu->read_byte(0xFF0F); // Interrupt flag (requests)
+    uint8_t ie_reg = mmu->read_byte(0xFFFF); // Interrupt enable
+    uint8_t ly_reg = mmu->read_byte(0xFF44); // Current scanline
+    uint8_t lcdc   = mmu->read_byte(0xFF40); // LCD control
+
+    std::stringstream ss;
+    ss << "--- PPU/INT STATUS ---" << std::endl;
+    ss << "LY (Scanline): " << (int)ly_reg << std::endl;
+    ss << "LCD Enabled:   " << ((lcdc & 0x80) ? "YES" : "NO") << std::endl;
+    ss << "IME (Master):  " << (ime ? "ON" : "OFF") << std::endl;
+    ss << "IE (Enabled):  0x" << std::hex << (int)ie_reg << std::dec << std::endl;
+    ss << "IF (Pending):  0x" << std::hex << (int)if_reg << std::dec << std::endl;
+    ss << "----------------------" << std::endl;
+
+    std::cout << ss.str();
 }
 
 // Extended opcode implementation 
@@ -197,6 +300,9 @@ uint8_t CPU::execute_cb_instruction(uint8_t opcode) {
         // Shifts and Rotates (0x00 - 0x3F)
         case 0x00:
             value = handle_cb_shift_rotate(opcode, value);
+            set_flag_z(value == 0);
+            set_flag_n(false);
+            set_flag_h(false);
             break;
 
         // BIT (0x40 - 0x7F)
@@ -225,6 +331,13 @@ uint8_t CPU::execute_cb_instruction(uint8_t opcode) {
                 uint8_t bit = (opcode >> 3) & 0x07;
                 value |= (1 << bit);
             }
+            break;
+
+        // BIT 7, H
+        case 0x7C:
+            set_flag_z(!(h & 0x80));
+            set_flag_n(false);
+            set_flag_h(true);
             break;
     }
 
@@ -301,8 +414,13 @@ uint8_t CPU::handle_cb_shift_rotate(uint8_t opcode, uint8_t value) {
 void CPU::init_instructions() {
     instructions.assign(256, { "XXX", &CPU::XXX });
     instructions[0x00] = { "NOP", &CPU::NOP };
-    instructions[0xC3] = { "JP a16", &CPU::JP_a16 };
 
+    instructions[0xC3] = { "JP a16", &CPU::JP_a16 };
+    instructions[0xC2] = { "JP NZ, a16", &CPU::JP_NZ_a16 };
+    instructions[0xCA] = { "JP Z, a16", &CPU::JP_Z_a16 };
+    instructions[0xD2] = { "JP NC, a16", &CPU::JP_NC_a16 };
+    instructions[0xDA] = { "JP C, a16", &CPU::JP_C_a16 };
+    
     instructions[0xAF] = { "XOR A, A", &CPU::XOR_A_A };
     instructions[0xA8] = { "XOR A, B", &CPU::XOR_A_B };
     instructions[0xA9] = { "XOR A, C", &CPU::XOR_A_C };
@@ -326,13 +444,28 @@ void CPU::init_instructions() {
     instructions[0x3D] = { "DEC A", &CPU::DEC_A };
     instructions[0x05] = { "DEC B", &CPU::DEC_B };
     instructions[0x0D] = { "DEC C", &CPU::DEC_C };
+    instructions[0x15] = { "DEC D", &CPU::DEC_D };
+    instructions[0x1D] = { "DEC E", &CPU::DEC_E };
+    instructions[0x25] = { "DEC H", &CPU::DEC_H };
+    instructions[0x2D] = { "DEC L", &CPU::DEC_L };
+    instructions[0x35] = { "DEC [HL]", &CPU::DEC_at_HL };
     instructions[0x20] = { "JR NZ, e8", &CPU::JR_NZ_e8 };
     instructions[0x18] = { "JR e8", &CPU::JR_e8 };
     instructions[0xF3] = { "DI", &CPU::DI };
     instructions[0xFB] = { "EI", &CPU::EI };
     instructions[0xE0] = { "LDH [a8], A", &CPU::LDH_a8_a };
     instructions[0xF0] = { "LDH A, [a8]", &CPU::LDH_a_a8 };
+    
     instructions[0xFE] = { "CP A, n8", &CPU::CP_A_n8 };
+    instructions[0xBF] = { "CP A, A", &CPU::CP_A_A };
+    instructions[0xB8] = { "CP A, B", &CPU::CP_A_B };
+    instructions[0xB9] = { "CP A, C", &CPU::CP_A_C };
+    instructions[0xBA] = { "CP A, D", &CPU::CP_A_D };
+    instructions[0xBB] = { "CP A, E", &CPU::CP_A_E };
+    instructions[0xBC] = { "CP A, H", &CPU::CP_A_H };
+    instructions[0xBD] = { "CP A, L", &CPU::CP_A_L };
+    instructions[0xBE] = { "CP A, [HL]", &CPU::CP_at_HL };
+
     instructions[0xCD] = { "CALL a16", &CPU::CALL_a16 };
     instructions[0xC9] = { "RET", &CPU::RET };
     instructions[0xD9] = { "RETI", &CPU::RETI };
@@ -341,7 +474,6 @@ void CPU::init_instructions() {
     instructions[0xEA] = { "LD [a16], A", &CPU::LD_a16_A };
     instructions[0x2A] = { "LD A, (HL+)", &CPU::LD_A_HL_ptr_inc };
     instructions[0x3A] = { "LD A, (HL-)", &CPU::LD_A_HL_ptr_dec };
-    instructions[0xE2] = { "LDH [C], A", &CPU::LDH_C_A };
 
     instructions[0x09] = { "ADD HL, BC", &CPU::ADD_HL_BC };
     instructions[0x19] = { "ADD HL, DE", &CPU::ADD_HL_DE };
@@ -351,6 +483,11 @@ void CPU::init_instructions() {
     instructions[0x3C] = { "INC A", &CPU::INC_A };
     instructions[0x04] = { "INC B", &CPU::INC_B };
     instructions[0x0C] = { "INC C", &CPU::INC_C };
+    instructions[0x14] = { "INC D", &CPU::INC_D };
+    instructions[0x1C] = { "INC E", &CPU::INC_E };
+    instructions[0x24] = { "INC H", &CPU::INC_H };
+    instructions[0x2C] = { "INC L", &CPU::INC_L };
+    instructions[0x34] = { "INC [HL]", &CPU::INC_at_HL };
 
     instructions[0x03] = { "INC BC", &CPU::INC_BC };
     instructions[0x13] = { "INC DE", &CPU::INC_DE };
@@ -369,7 +506,11 @@ void CPU::init_instructions() {
     instructions[0x31] = { "LD SP, n16", &CPU::LD_SP_n16 };
 
     instructions[0x0B] = { "DEC BC", &CPU::DEC_BC };
+    instructions[0x1B] = { "DEC DE", &CPU::DEC_DE };
+    instructions[0x2B] = { "DEC HL", &CPU::DEC_HL };
+    instructions[0x3B] = { "DEC SP", &CPU::DEC_SP };
 
+    instructions[0x7F] = { "LD A, A", &CPU::LD_A_A };
     instructions[0x78] = { "LD A, B", &CPU::LD_A_B };
     instructions[0x79] = { "LD A, C", &CPU::LD_A_C };
     instructions[0x7A] = { "LD A, D", &CPU::LD_A_D };
@@ -403,7 +544,6 @@ void CPU::init_instructions() {
     instructions[0x28] = { "JR Z, e8", &CPU::JR_Z_e8 };
     instructions[0xC0] = { "RET NZ", &CPU::RET_NZ };
     instructions[0xC8] = { "RET Z", &CPU::RET_Z };
-    instructions[0x34] = { "INC [HL]", &CPU::INC_at_HL };
 
     instructions[0xE1] = { "POP HL", &CPU::POP_HL };
     instructions[0xC1] = { "POP BC", &CPU::POP_BC };
@@ -413,10 +553,16 @@ void CPU::init_instructions() {
     instructions[0x2F] = { "CPL", &CPU::CPL };
     instructions[0xCB] = { "PREFIX CB", &CPU::PREFIX_CB };
 
-    instructions[0x47] = { "LD B, A", &CPU::LD_B_A };
-    instructions[0x4F] = { "LD C, A", &CPU::LD_C_A };
-
+    instructions[0x40] = { "LD B, B", &CPU::LD_B_B };
+    instructions[0x41] = { "LD B, C", &CPU::LD_B_C };
+    instructions[0x42] = { "LD B, D", &CPU::LD_B_D };
+    instructions[0x43] = { "LD B, E", &CPU::LD_B_E };
+    instructions[0x44] = { "LD B, H", &CPU::LD_B_H };
+    instructions[0x45] = { "LD B, L", &CPU::LD_B_L };
     instructions[0x46] = { "LD B, [HL]", &CPU::LD_B_HL };
+    instructions[0x47] = { "LD B, A", &CPU::LD_B_A };
+
+    instructions[0x4F] = { "LD C, A", &CPU::LD_C_A };
     instructions[0x4E] = { "LD C, [HL]", &CPU::LD_C_HL };
     instructions[0x56] = { "LD D, [HL]", &CPU::LD_D_HL };
     instructions[0x5E] = { "LD E, [HL]", &CPU::LD_E_HL };
@@ -449,6 +595,49 @@ void CPU::init_instructions() {
     instructions[0x85] = { "ADD A, L", &CPU::ADD_A_L };
 
     instructions[0xE9] = { "JP HL", &CPU::JP_HL };
+    
+    instructions[0x49] = { "LD C, C", &CPU::LD_C_C };
+    
+    instructions[0xE2] = { "LDH [C], A", &CPU::LDH_C_ptr_A };
+    instructions[0xF2] = { "LDH A, [C]", &CPU::LDH_A_C_ptr };
+
+    instructions[0x37] = { "SCF", &CPU::SCF };
+    instructions[0x3F] = { "CCF", &CPU::CCF };
+
+    instructions[0xCE] = { "ADC A, n8", &CPU::ADC_A_n8 };
+    instructions[0x8F] = { "ADC A, A", &CPU::ADC_A_A };
+    instructions[0x88] = { "ADC A, B", &CPU::ADC_A_B };
+    instructions[0x89] = { "ADC A, C", &CPU::ADC_A_C };
+    instructions[0x8A] = { "ADC A, D", &CPU::ADC_A_D };
+    instructions[0x8B] = { "ADC A, E", &CPU::ADC_A_E };
+    instructions[0x8C] = { "ADC A, H", &CPU::ADC_A_H };
+    instructions[0x8D] = { "ADC A, L", &CPU::ADC_A_L };
+    instructions[0x8E] = { "ADC A, [HL]", &CPU::ADC_A_HL };
+
+    instructions[0x86] = { "ADD A, [HL]", &CPU::ADD_A_HL };
+    instructions[0xC6] = { "ADD A, n8", &CPU::ADD_A_n8 };
+
+    instructions[0x97] = { "SUB A, A", &CPU::SUB_A_A };
+    instructions[0x90] = { "SUB A, B", &CPU::SUB_A_B };
+    instructions[0x91] = { "SUB A, C", &CPU::SUB_A_C };
+    instructions[0x92] = { "SUB A, D", &CPU::SUB_A_D };
+    instructions[0x93] = { "SUB A, E", &CPU::SUB_A_E };
+    instructions[0x94] = { "SUB A, H", &CPU::SUB_A_H };
+    instructions[0x95] = { "SUB A, L", &CPU::SUB_A_L };
+    instructions[0x96] = { "SUB A, [HL]", &CPU::SUB_A_HL };
+    instructions[0xD6] = { "SUB A, n8", &CPU::SUB_A_n8 };
+
+    instructions[0x9F] = { "SBC A, A", &CPU::SBC_A_A };
+    instructions[0x98] = { "SBC A, B", &CPU::SBC_A_B };
+    instructions[0x99] = { "SBC A, C", &CPU::SBC_A_C };
+    instructions[0x9A] = { "SBC A, D", &CPU::SBC_A_D };
+    instructions[0x9B] = { "SBC A, E", &CPU::SBC_A_E };
+    instructions[0x9C] = { "SBC A, H", &CPU::SBC_A_H };
+    instructions[0x9D] = { "SBC A, L", &CPU::SBC_A_L };
+    instructions[0x9E] = { "SBC A, [HL]", &CPU::SBC_A_HL };
+    instructions[0xDE] = { "SBC A, n8", &CPU::SBC_A_n8 };
+
+    instructions[0xA6] = { "AND A, [HL]", &CPU::AND_A_HL };
 }
 
 uint8_t CPU::XXX() {
@@ -470,9 +659,57 @@ uint8_t CPU::JP_a16() {
     return 16;
 }
 
+uint8_t CPU::JP_NZ_a16() {
+    uint16_t address = mmu->read_word(pc);
+    
+    if (!get_flag_z()) {
+        pc = address;
+        return 16;
+    } else {
+        pc += 2;
+        return 12;
+    }
+}
+
+uint8_t CPU::JP_Z_a16() {
+    uint16_t address = mmu->read_word(pc);
+    
+    if (get_flag_z()) {
+        pc = address;
+        return 16;
+    } else {
+        pc += 2;
+        return 12;
+    }
+}
+
+uint8_t CPU::JP_NC_a16() {
+    uint16_t address = mmu->read_word(pc);
+    
+    if (!get_flag_c()) {
+        pc = address;
+        return 16;
+    } else {
+        pc += 2;
+        return 12;
+    }
+}
+
+uint8_t CPU::JP_C_a16() {
+    uint16_t address = mmu->read_word(pc);
+    
+    if (get_flag_c()) {
+        pc = address;
+        return 16;
+    } else {
+        pc += 2;
+        return 12;
+    }
+}
+
 uint8_t CPU::XOR_A_A() {
     a ^= a;
-    set_flag_z(a == 0);
+    set_flag_z(true);
     set_flag_n(false);
     set_flag_h(false);
     set_flag_c(false);
@@ -676,7 +913,6 @@ uint8_t CPU::LDH_a_a8() {
 
 uint8_t CPU::CP_A_n8() {
     uint8_t value = mmu->read_byte(pc);
-    printf("[CPU] CP A (%02X) with constant (%02X)\n", a, value);
     pc++;
 
     uint8_t result = a - value;
@@ -686,6 +922,99 @@ uint8_t CPU::CP_A_n8() {
 
     // Set half-carry flag if lower nibble (bit 4) is 0
     set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);  
+
+    return 8;
+}
+
+uint8_t CPU::CP_A_A() {
+    uint8_t value = a;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_B() {
+    uint8_t value = b;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_C() {
+    uint8_t value = c;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_D() {
+    uint8_t value = d;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_E() {
+    uint8_t value = e;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_H() {
+    uint8_t value = h;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_A_L() {
+    uint8_t value = l;
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+    set_flag_c(a < value);
+    return 4;
+}
+
+uint8_t CPU::CP_at_HL() {
+    uint8_t value = mmu->read_byte(get_hl());
+    uint8_t result = a - value;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+
+    // Set half-carry flag if lower nibble (bit 4) is 0
+    set_flag_h((a & 0x0F) < (value & 0x0F));
+
+    // Set carry value if A < value (unsigned)
     set_flag_c(a < value);  
 
     return 8;
@@ -809,6 +1138,62 @@ uint8_t CPU::INC_C() {
     return 4;
 }
 
+uint8_t CPU::INC_D() {
+    // Set half-carry flag if lower nibble (bit 4) is 0x0F before increment
+    set_flag_h((d & 0x0F) == 0x0F);
+    d++;
+
+    set_flag_z(d == 0);
+    set_flag_n(false);
+    return 4;
+}
+
+uint8_t CPU::INC_E() {
+    // Set half-carry flag if lower nibble (bit 4) is 0x0F before increment
+    set_flag_h((e & 0x0F) == 0x0F);
+    e++;
+
+    set_flag_z(e == 0);
+    set_flag_n(false);
+    return 4;
+}
+
+uint8_t CPU::INC_H() {
+    // Set half-carry flag if lower nibble (bit 4) is 0x0F before increment
+    set_flag_h((h & 0x0F) == 0x0F);
+    h++;
+
+    set_flag_z(h == 0);
+    set_flag_n(false);
+    return 4;
+}
+
+uint8_t CPU::INC_L() {
+    // Set half-carry flag if lower nibble (bit 4) is 0x0F before increment
+    set_flag_h((l & 0x0F) == 0x0F);
+    l++;
+
+    set_flag_z(l == 0);
+    set_flag_n(false);
+    return 4;
+}
+
+uint8_t CPU::INC_at_HL() {
+    uint16_t address = get_hl();
+    uint8_t value = mmu->read_byte(address);
+
+    // Half-carry: set if bit 3 overflows into bit 4
+    set_flag_h((value & 0x0F) == 0x0F);
+    value++;
+
+    set_flag_z(value == 0);
+    set_flag_n(false);
+
+    mmu->write_byte(address, value);
+
+    return 12;
+}
+
 uint8_t CPU::LD_BC_n16() {
     uint16_t value = mmu->read_word(pc);
     pc += 2;
@@ -848,13 +1233,77 @@ uint8_t CPU::DEC_BC() {
     return 8;
 }
 
+uint8_t CPU::DEC_DE() {
+    uint16_t de = get_de();
+    de--;
+    set_de(de);
+    return 8;
+}
+
+uint8_t CPU::DEC_HL() {
+    uint16_t hl = get_hl();
+    hl--;
+    set_hl(hl);
+    return 8;
+}
+
+uint8_t CPU::DEC_SP() {
+    sp--;
+    return 8;
+}
+
+uint8_t CPU::DEC_D() {
+    set_flag_h((d & 0x0F) == 0);
+    d--;
+    set_flag_z(d == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::DEC_E() {
+    set_flag_h((e & 0x0F) == 0);
+    e--;
+    set_flag_z(e == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::DEC_H() {
+    set_flag_h((h & 0x0F) == 0);
+    h--;
+    set_flag_z(h == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::DEC_L() {
+    set_flag_h((l & 0x0F) == 0);
+    l--;
+    set_flag_z(l == 0);
+    set_flag_n(true);
+    return 4;
+}
+
+uint8_t CPU::DEC_at_HL() {
+    uint16_t address = get_hl();
+    uint8_t value = mmu->read_byte(address);
+
+    set_flag_h((value & 0x0F) == 0);
+    value--;
+    set_flag_z(value == 0);
+    set_flag_n(true);
+
+    mmu->write_byte(address, value);
+    return 12;
+}
+
 uint8_t CPU::LD_A_B() {
     a = b;
     return 4;
 }
 
 uint8_t CPU::LD_A_C() {
-    a = b;
+    a = c;
     return 4;
 }
 
@@ -875,6 +1324,11 @@ uint8_t CPU::LD_A_H() {
 
 uint8_t CPU::LD_A_L() {
     a = l;
+    return 4;
+}
+
+uint8_t CPU::LD_A_A() {
+    // NOP equivalent, here for consistency
     return 4;
 }
 
@@ -1045,7 +1499,7 @@ uint8_t CPU::JR_Z_e8() {
     int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
     pc++;
 
-    if (!get_flag_z()) {
+    if (get_flag_z()) {
         pc += offset;
         return 12;
     }
@@ -1113,22 +1567,6 @@ uint8_t CPU::LD_A_HL_ptr_dec() {
     return 8;
 }
 
-uint8_t CPU::INC_at_HL() {
-    uint16_t address = get_hl();
-    uint8_t value = mmu->read_byte(address);
-
-    // Half-carry: set if bit 3 overflows into bit 4
-    set_flag_h((value & 0x0F) == 0x0F);
-    value++;
-
-    set_flag_z(value == 0);
-    set_flag_n(false);
-
-    mmu->write_byte(address, value);
-
-    return 12;
-}
-
 uint8_t CPU::POP_HL() {
     uint16_t value = mmu->read_word(sp);
     sp += 2;
@@ -1170,6 +1608,36 @@ uint8_t CPU::PREFIX_CB() {
 
     // Execute the instruction from the CB-specific table
     return execute_cb_instruction(cb_opcode);
+}
+
+uint8_t CPU::LD_B_B() {
+    // Redundant load (NOP operation equivalent)
+    return 4;
+}
+
+uint8_t CPU::LD_B_C() {
+    b = c;
+    return 4;
+}
+
+uint8_t CPU::LD_B_D() {
+    b = d;
+    return 4;
+}
+
+uint8_t CPU::LD_B_E() {
+    b = e;
+    return 4;
+}
+
+uint8_t CPU::LD_B_H() {
+    b = h;
+    return 4;
+}
+
+uint8_t CPU::LD_B_L() {
+    b = l;
+    return 4;
 }
 
 uint8_t CPU::LD_B_A() {
@@ -1530,3 +1998,116 @@ uint8_t CPU::JP_HL() {
     pc = get_hl();
     return 4;
 }
+
+uint8_t CPU::LD_C_C() {
+    // Equivalent to NOP, but added here for consistency
+    return 4;
+}
+
+uint8_t CPU::LDH_A_C_ptr() {
+    // Address to read is in IO space plus value of register C
+    uint16_t address = 0xFF00 + c;
+    a = mmu->read_byte(address);
+
+    return 8;
+}
+
+uint8_t CPU::LDH_C_ptr_A() {
+    // Address to read is in IO space plus value of register C
+    uint16_t address = 0xFF00 + c;
+    mmu->write_byte(address, a);
+
+    return 8;
+}
+
+uint8_t CPU::SCF() {
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(true);
+    return 4;
+}
+
+uint8_t CPU::CCF() {
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(!get_flag_c());
+    return 4;
+}
+
+void CPU::alu_add(uint8_t val, bool carry) {
+    uint16_t c = carry ? 1 : 0;
+    uint16_t result = a + val + c;
+    
+    set_flag_z((result & 0xFF) == 0);
+    set_flag_n(false);
+    // Half-carry: overflow from bit 3
+    set_flag_h(((a & 0x0F) + (val & 0x0F) + c) > 0x0F);
+    // Carry: overflow from bit 7
+    set_flag_c(result > 0xFF);
+    
+    a = static_cast<uint8_t>(result);
+}
+
+void CPU::alu_sub(uint8_t val, bool carry) {
+    uint16_t c = carry ? 1 : 0;
+    int16_t result = a - val - c;
+    
+    set_flag_z((result & 0xFF) == 0);
+    set_flag_n(true);
+    // Half-carry: borrow from bit 4
+    set_flag_h(((a & 0x0F) - (val & 0x0F) - c) < 0);
+    // Carry: borrow from bit 8 (result < 0)
+    set_flag_c(result < 0);
+    
+    a = static_cast<uint8_t>(result);
+}
+
+uint8_t CPU::AND_A_HL() {
+    uint8_t val = mmu->read_byte(get_hl());
+    a &= val;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(true);
+    set_flag_c(false);
+    return 8;
+}
+
+uint8_t CPU::ADD_A_HL() {
+    alu_add(mmu->read_byte(get_hl()), false);
+    return 8;
+}
+
+uint8_t CPU::ADD_A_n8() {
+    alu_add(mmu->read_byte(pc++), false);
+    return 8;
+}
+
+uint8_t CPU::ADC_A_A() { alu_add(a, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_B() { alu_add(b, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_C() { alu_add(c, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_D() { alu_add(d, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_E() { alu_add(e, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_H() { alu_add(h, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_L() { alu_add(l, get_flag_c()); return 4; }
+uint8_t CPU::ADC_A_HL() { alu_add(mmu->read_byte(get_hl()), get_flag_c()); return 8; }
+uint8_t CPU::ADC_A_n8() { alu_add(mmu->read_byte(pc++), get_flag_c()); return 8; }
+
+uint8_t CPU::SUB_A_A() { alu_sub(a, false); return 4; }
+uint8_t CPU::SUB_A_B() { alu_sub(b, false); return 4; }
+uint8_t CPU::SUB_A_C() { alu_sub(c, false); return 4; }
+uint8_t CPU::SUB_A_D() { alu_sub(d, false); return 4; }
+uint8_t CPU::SUB_A_E() { alu_sub(e, false); return 4; }
+uint8_t CPU::SUB_A_H() { alu_sub(h, false); return 4; }
+uint8_t CPU::SUB_A_L() { alu_sub(l, false); return 4; }
+uint8_t CPU::SUB_A_HL() { alu_sub(mmu->read_byte(get_hl()), false); return 8; }
+uint8_t CPU::SUB_A_n8() { alu_sub(mmu->read_byte(pc++), false); return 8; }
+
+uint8_t CPU::SBC_A_A() { alu_sub(a, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_B() { alu_sub(b, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_C() { alu_sub(c, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_D() { alu_sub(d, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_E() { alu_sub(e, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_H() { alu_sub(h, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_L() { alu_sub(l, get_flag_c()); return 4; }
+uint8_t CPU::SBC_A_HL() { alu_sub(mmu->read_byte(get_hl()), get_flag_c()); return 8; }
+uint8_t CPU::SBC_A_n8() { alu_sub(mmu->read_byte(pc++), get_flag_c()); return 8; }

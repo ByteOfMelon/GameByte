@@ -1,4 +1,22 @@
 #include "ppu.h"
+#include <cstring>
+
+PPU::PPU() {
+    // Initialize registers to Post-Boot ROM defaults
+    lcdc = 0x91; // LCD enabled, Window enabled, BG window/tile Data @ $8000
+    stat = 0x85;
+    scy = 0x00;
+    scx = 0x00;
+    lyc = 0x00;
+    bgp = 0xFC;
+    
+    current_ly = 0;
+    ppu_cycles = 0;
+    mode = 2; // Default - OAM search
+
+    // Clear framebuffer
+    memset(framebuffer, 0, sizeof(framebuffer));
+}
 
 void PPU::connect_mmu(MMU* m) {
     mmu = m;
@@ -11,6 +29,7 @@ void PPU::init_sdl() {
     window = SDL_CreateWindow("GameByte", (160*2), (144*2), 0);
     renderer = SDL_CreateRenderer(window, nullptr);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 }
 
 void PPU::render_frame() {
@@ -20,7 +39,21 @@ void PPU::render_frame() {
     SDL_RenderPresent(renderer);
 }
 
+void PPU::render_blank() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderClear(renderer);
+    SDL_RenderPresent(renderer);
+}
+
 void PPU::tick(uint8_t cycles) {
+    // Check if LCD is enabled (LCDC bit 7)
+    if (!(lcdc & 0x80)) {
+        ppu_cycles = 0;
+        current_ly = 0;
+        mode = 2; // When LCD is re-enabled, restart in OAM Search (Mode 2)
+        return;
+    }
+
     ppu_cycles += cycles;
 
     switch (mode) {
@@ -69,6 +102,31 @@ void PPU::tick(uint8_t cycles) {
             }
             break;
     }
+
+    // Update the STAT register's bits 0-1
+    stat &= ~0x03;
+    stat |= (mode & 0x03);
+
+    // Handle LYC == LY comparison (bit 2 of STAT)
+    if (current_ly == lyc) {
+        bool was_coincidence = (stat & 0x04);
+        stat |= 0x04;
+        
+        if (!was_coincidence && (stat & 0x40)) {
+            request_interrupt(1);
+        }
+    } else {
+        stat &= ~0x04;
+    }
+
+    // Trigger STAT interrupt on mode changes
+    if (mode != last_mode) {
+        if (mode == 0 && (stat & 0x08)) request_interrupt(1);
+        if (mode == 1 && (stat & 0x10)) request_interrupt(1);
+        if (mode == 2 && (stat & 0x20)) request_interrupt(1);
+        
+        last_mode = mode; // Update last_mode for the next tick
+    }
 }
 
 void PPU::draw_scanline() {
@@ -77,54 +135,115 @@ void PPU::draw_scanline() {
 
     // Check if scanline is beyond visible area
     if (ly >= 144) return;
+    
+    uint8_t lcdc = mmu->read_byte(0xFF40);
 
     // Get the background palette (BGP) at 0xFF47
     uint8_t bgp = mmu->read_byte(0xFF47);
     uint32_t shades[] = { 0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000 };
 
-    // Get scroll (x and y) pos
-    uint8_t scy = mmu->read_byte(0xFF42);
-    uint8_t scx = mmu->read_byte(0xFF43);
-
-    // Identify which tile map to use (from LCDC bit 3)
-    uint16_t map_base = (mmu->read_byte(0xFF40) & 0x08) ? 0x9C00 : 0x9800;
-    
-    // Find the vertical tile row
-    uint8_t y_pos = ly + scy;
-    uint16_t tile_row = (y_pos / 8) * 32;
-
-    for (int px = 0; px < 160; px++) {
-        uint8_t x_pos = px + scx;
-        uint16_t tile_col = (x_pos / 8);
-        
-        // Get tile index from the map
-        uint8_t tile_index = mmu->read_byte(map_base + tile_row + tile_col);
-
-        // Find the tile data address ($8000 area)
-
-        // Identify tile data addressing mode (LCDC bit 4), handles signed addressing
-        bool is_unsigned = (mmu->read_byte(0xFF40) & 0x10);
-        uint16_t tile_data_addr;
-
-        if (is_unsigned) {
-            tile_data_addr = 0x8000 + (tile_index * 16);
-        } else {
-            // Signed addressing - 0x9000 is the base, tile_index is treated as a signed 8-bit int
-            tile_data_addr = 0x9000 + (static_cast<int8_t>(tile_index) * 16);
+    // Check master bg/window enable bit (LCDC bit 0)
+    if (!(lcdc & 0x01)) {
+        // Fill scanline with white (color 0)
+        for (int px = 0; px < 160; px++) {
+            framebuffer[ly * 160 + px] = shades[0];
         }
-        
-        // Get the specific 2 bytes for the 8 pixels in this row
-        uint8_t line = (y_pos % 8) * 2;
-        uint8_t byte1 = mmu->read_byte(tile_data_addr + line);
-        uint8_t byte2 = mmu->read_byte(tile_data_addr + line + 1);
+        return;
+    } else {
+        // Window positions
+        uint8_t wy = mmu->read_byte(0xFF4A);
+        uint8_t wx = mmu->read_byte(0xFF4B) - 7;
+        bool window_enabled = (lcdc & 0x20) && (ly >= wy);
 
-        // Extract the 2 bits for the current pixel
-        int bit = 7 - (x_pos % 8);
-        uint8_t color_id = ((byte2 >> bit) & 0x01) << 1 | ((byte1 >> bit) & 0x01);
+        // Get scroll (x and y) pos
+        uint8_t scy = mmu->read_byte(0xFF42);
+        uint8_t scx = mmu->read_byte(0xFF43);
 
-        // Map the 2-bit color_id through the BGP palette - each 2 bits of BGP represent a color for IDs 0, 1, 2, and 3
-        uint8_t palette_color = (bgp >> (color_id * 2)) & 0x03;
-        framebuffer[ly * 160 + px] = shades[palette_color];
+        for (int px = 0; px < 160; px++) {
+            uint16_t map_base;
+            uint8_t t_x, t_y;
+
+            // Decide if window or background
+            if (window_enabled && px >= wx) {
+                map_base = (lcdc & 0x40) ? 0x9C00 : 0x9800; // LCDC bit 6
+                t_x = px - wx;
+                t_y = ly - wy;
+            } else {
+                map_base = (lcdc & 0x08) ? 0x9C00 : 0x9800; // LCDC bit 3
+                t_x = px + scx;
+                t_y = ly + scy;
+            }
+
+            uint16_t tile_row = (t_y / 8) * 32;
+            uint16_t tile_col = (t_x / 8);
+            uint8_t tile_index = mmu->read_byte(map_base + tile_row + tile_col);
+
+            // Tile data addressing
+            bool is_unsigned = (lcdc & 0x10);
+            uint16_t tile_data_addr;
+            if (is_unsigned) {
+                tile_data_addr = 0x8000 + (tile_index * 16);
+            } else {
+                int16_t rel_address = static_cast<int8_t>(tile_index) * 16;
+                tile_data_addr = static_cast<uint16_t>(0x9000 + rel_address);
+            }
+
+            // Fetch pixel bits
+            uint8_t line = (t_y % 8) * 2;
+            uint8_t b1 = mmu->read_byte(tile_data_addr + line);
+            uint8_t b2 = mmu->read_byte(tile_data_addr + line + 1);
+
+            int bit = 7 - (t_x % 8);
+            uint8_t color_id = ((b2 >> bit) & 0x01) << 1 | ((b1 >> bit) & 0x01);
+
+            // Apply palette and write to framebuffer
+            uint8_t palette_color = (bgp >> (color_id * 2)) & 0x03;
+            framebuffer[ly * 160 + px] = shades[palette_color];
+        }
+    }
+
+    // Draw sprite(s) on top of background
+    if (lcdc & 0x02) {
+        for (int i = 0; i < 40; i++) {
+            uint16_t oam_addr = 0xFE00 + (i * 4);
+            
+            // Get proper sprite attributes
+            uint8_t sprite_y = mmu->read_byte(oam_addr) - 16;
+            uint8_t sprite_x = mmu->read_byte(oam_addr + 1) - 8;
+            uint8_t tile_index = mmu->read_byte(oam_addr + 2);
+            uint8_t attributes = mmu->read_byte(oam_addr + 3);
+
+            // Check if sprite is visible on this scanline (ly)
+            if (ly >= sprite_y && ly < sprite_y + 8) {
+                // Determine which palette to use (Bit 4: 0=OBP0, 1=OBP1)
+                uint8_t obp = mmu->read_byte((attributes & 0x10) ? 0xFF49 : 0xFF48);
+                
+                // Fetch tile data (Sprites always use 0x8000-0x8FFF unsigned mode)
+                uint16_t tile_addr = 0x8000 + (tile_index * 16);
+                uint8_t line = (ly - sprite_y);
+                
+                // Handle vertical flip (Bit 6)
+                if (attributes & 0x40) line = 7 - line;
+                
+                uint8_t b1 = mmu->read_byte(tile_addr + (line * 2));
+                uint8_t b2 = mmu->read_byte(tile_addr + (line * 2) + 1);
+
+                for (int x = 0; x < 8; x++) {
+                    int pixel_x = sprite_x + x;
+                    if (pixel_x < 0 || pixel_x >= 160) continue;
+
+                    // Handle horizontal flip (Bit 5)
+                    int bit = (attributes & 0x20) ? x : 7 - x;
+                    uint8_t color_id = ((b2 >> bit) & 0x01) << 1 | ((b1 >> bit) & 0x01);
+
+                    // Don't draw transparent pixels (color 0)
+                    if (color_id != 0) {
+                        uint8_t palette_color = (obp >> (color_id * 2)) & 0x03;
+                        framebuffer[ly * 160 + pixel_x] = shades[palette_color];
+                    }
+                }
+            }
+        }
     }
 }
 
