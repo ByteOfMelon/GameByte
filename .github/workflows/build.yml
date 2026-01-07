@@ -8,50 +8,52 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: ${{ matrix.os }} Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-
+  # Windows build
+  windows-build:
+    name: Windows Build
+    runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    # Windows build
-    - name: Build (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-        cmake --build build --config Release
+      - name: Configure and Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
 
-    # macOS build using Homebrew
-    - name: Install Dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: brew install sdl3
+      - name: Prepare Artifact
+        shell: bash
+        run: |
+          # Bundling the DLL with the EXE so it actually runs
+          cp build/_deps/sdl-build/Release/SDL3.dll build/Release/
 
-    - name: Build (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-        cmake --build build
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameByte-Windows
+          path: build/Release/
 
-    # Upload artifacts
-    - name: Upload Artifact (Windows)
-      if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v4
-      with:
-        name: GameByte-Windows
-        path: build/Release/GameByte.exe
+  # macOS build
+  macos-build:
+    name: macOS Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Upload Artifact (macOS)
-      if: runner.os == 'macOS'
-      uses: actions/upload-artifact@v4
-      with:
-        name: GameByte-macOS
-        path: |
-          build/GameByte
-          build/Release/GameByte
+      - name: Install Dependencies
+        run: brew install sdl3
+
+      - name: Configure and Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameByte-macOS
+          path: |
+            build/GameByte
