@@ -119,8 +119,8 @@ int main(int argc, char* argv[]) {
         }
 
         // Run CPU for one frame
-        while (cycles_this_frame < CYCLES_PER_FRAME) {
-            try {
+        try {
+            while (cycles_this_frame < CYCLES_PER_FRAME) {
                 int cycles = cpu.step();
                 cycles_this_frame += cycles;
                 
@@ -137,13 +137,13 @@ int main(int argc, char* argv[]) {
                     // Only allow a new draw once the PPU leaves the V-Blank trigger line
                     frame_drawn_this_vblank = false;
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "[GameByte] Emulation error about to occur. Total cycles we got through: " << cpu.total_cycles << std::endl;
-                std::cerr << e.what() << std::endl;
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Execution Error", e.what(), nullptr);
-                running = false; // Stop on error
-                return 1;
             }
+        } catch (const std::exception& e) {
+            std::cerr << "[GameByte] Emulation error about to occur. Total cycles we got through: " << cpu.total_cycles << std::endl;
+            std::cerr << e.what() << std::endl;
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Execution Error", e.what(), nullptr);
+            running = false; // Stop on error
+            return 1;
         }
 
         // Debug key

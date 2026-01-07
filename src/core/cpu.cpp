@@ -170,31 +170,26 @@ uint8_t CPU::handle_interrupts() {
 
         // Priority 1: V-Blank (0x0040)
         if (pending & 0x01) {
-            printf("[INTERRUPT] Dispatching to 0x0040!\n");
             return execute_interrupt(0, 0x0040);
         }
 
         // Priority 2: LCD STAT (0x0048)
         if (pending & 0x02) {
-            printf("[INTERRUPT] Dispatching to 0x0048!\n");
             return execute_interrupt(1, 0x0048);
         }
 
         // Priority 3: Timer (0x0050)
         if (pending & 0x04) {
-            printf("[INTERRUPT] Dispatching to 0x0050!\n");
             return execute_interrupt(2, 0x0050);
         }
 
         // Priority 4: Serial (0x0058)
         if (pending & 0x08) {
-            printf("[INTERRUPT] Dispatching to 0x0058!\n");
             return execute_interrupt(3, 0x0058);
         }
 
         // Priority 5: Joypad (0x0060)
         if (pending & 0x10) {
-            printf("[INTERRUPT] Dispatching to 0x0060!\n");
             return execute_interrupt(4, 0x0060);
         }
     }

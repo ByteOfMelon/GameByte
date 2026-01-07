@@ -47,9 +47,6 @@ bool MMU::load_game(const uint8_t* data, size_t size) {
 }
 
 uint8_t MMU::read_byte(uint16_t address) {
-    // Stream for errors
-    std::stringstream ss;
-
     // Find byte in memory map
     if (address <= 0x7FFF) {
         // Cartridge ROM
@@ -77,7 +74,6 @@ uint8_t MMU::read_byte(uint16_t address) {
 
         // I/O Registers
         if (address == 0xFF04 && cpu) {
-            std::cout << "[MMU] DEBUG: Reading DIV register at 0xFF04, returning upper 8 bits of internal counter: " << std::hex << (cpu->internal_counter >> 8) << std::dec << std::endl;
             return static_cast<uint8_t>(cpu->internal_counter >> 8);
         }
         
@@ -103,15 +99,13 @@ uint8_t MMU::read_byte(uint16_t address) {
         return ie;
     } else {
         // Unusable memory area or not implemented (e.g. 0xFEA0 - 0xFEFF)
+        std::stringstream ss;
         ss << "Attempted read of unusable memory area at 0x" << std::hex << address;
         throw std::runtime_error("[MMU] " + ss.str());
     }
 }
 
 void MMU::write_byte(uint16_t address, uint8_t value) {
-    // Stream for errors
-    std::stringstream ss;
-
     // Special write cases (i.e. I/O registers, VRAM, etc)
     // Joypad
     if (address == 0xFF00) {
@@ -195,6 +189,7 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
         ie = value;
     } else {
         // Unusable memory area or not implemented
+        std::stringstream ss;
         ss << "Attempted write to unusable memory area at 0x" << std::hex << address;
         throw std::runtime_error("[MMU] " + ss.str());
     }
