@@ -22,18 +22,6 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
 
-      - name: Prepare Artifact
-        shell: bash
-        run: |
-          # Bundling the DLL with the EXE so it actually runs
-          DLL_PATH=$(find build -name "SDL3.dll" | grep Release | head -n 1)
-          if [ -z "$DLL_PATH" ]; then
-            echo "Error: SDL3.dll not found!"
-            exit 1
-          fi
-          echo "Found SDL3.dll at: $DLL_PATH"
-          cp "$DLL_PATH" build/Release/
-
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -42,7 +30,7 @@ jobs:
 
   # macOS build
   macos-build:
-    name: macOS Build
+    name: macOS Build (base executable + SDL only)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
