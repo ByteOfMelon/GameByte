@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,35 +21,25 @@ jobs:
       with:
         submodules: recursive
 
-    # Windows Configuration
-    # Uses the 'vendored/SDL' via add_subdirectory as per CMakeLists.txt
-    - name: Configure CMake (Windows)
-      if: runner.os == 'Windows'
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
+    # Windows build
     - name: Build (Windows)
       if: runner.os == 'Windows'
-      run: cmake --build build --config Release
-
-    # macOS Configuration
-    # Needs SDL3 installed/available for find_package(SDL3).
-    # We build the vendored SDL3 first and install it to a local directory.
-    - name: Build SDL3 (macOS)
-      if: runner.os == 'macOS'
       run: |
-        cmake -S vendored/SDL -B build-sdl -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
-        cmake --build build-sdl --target install
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --config Release
 
-    - name: Configure CMake (macOS)
+    # macOS build using Homebrew
+    - name: Install Dependencies (macOS)
       if: runner.os == 'macOS'
-      run: |
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
+      run: brew install sdl3
 
     - name: Build (macOS)
       if: runner.os == 'macOS'
-      run: cmake --build build --config Release
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build
 
-    # Upload Artifacts
+    # Upload artifacts
     - name: Upload Artifact (Windows)
       if: runner.os == 'Windows'
       uses: actions/upload-artifact@v4
