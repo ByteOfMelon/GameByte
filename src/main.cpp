@@ -1,9 +1,11 @@
 #include <iostream>
 #include <SDL3/SDL.h>
+
 #include "core/cpu.h"
 #include "core/mmu.h"
 #include "core/rom.h"
 #include "core/ppu.h"
+#include "core/joypad.h"
 
 // Constants for timing
 const int CYCLES_PER_FRAME = 70224;
@@ -16,11 +18,13 @@ int main(int argc, char* argv[]) {
     CPU cpu;
     PPU ppu;
     ROM rom;
+    Joypad joypad;
 
     ppu.connect_mmu(&mmu);
     mmu.connect_ppu(&ppu);
     cpu.connect_mmu(&mmu);
     mmu.connect_cpu(&cpu);
+    mmu.connect_joypad(&joypad);
 
     // Initialization
     std::cout << "[GameByte] Initializing GameByte..." << std::endl;
@@ -60,8 +64,16 @@ int main(int argc, char* argv[]) {
 
         // Handle SDL events
         while (SDL_PollEvent(&e) != 0) {
+            // Handle quit event
             if (e.type == SDL_EVENT_QUIT) {
                 running = false;
+            }
+
+            // Input handoff from SDL to Joypad
+            if (joypad.handle_sdl_event(e)) {
+                // Request Joypad Interrupt (bit 4 of IF register)
+                uint8_t if_reg = mmu.read_byte(0xFF0F);
+                mmu.write_byte(0xFF0F, if_reg | 0x10);
             }
         }
 

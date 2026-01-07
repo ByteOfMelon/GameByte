@@ -42,6 +42,7 @@ add_executable(GameByte src/main.cpp
                           src/core/mmu.cpp
                           src/core/rom.cpp
                           src/core/ppu.cpp
+                          src/core/joypad.cpp
                           # Add other.cpp files as you create them
                           )
 

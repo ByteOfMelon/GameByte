@@ -7,6 +7,7 @@
 
 class CPU;
 class PPU;
+class Joypad;
 
 /**
  * @brief Implements the Game Boy's Memory Management Unit (MMU).alignas
@@ -36,6 +37,9 @@ class MMU {
 
         PPU* ppu = nullptr;
         void connect_ppu(PPU* p);
+
+        Joypad* joypad = nullptr;
+        void connect_joypad(Joypad* j);
 
         uint8_t read_byte(uint16_t address);
         void write_byte(uint16_t address, uint8_t value);

@@ -296,6 +296,9 @@ class CPU {
         // Copy 8-bit value from A register to A register (0x7F)
         uint8_t LD_A_A();
 
+        // Bitwise OR with A and A register, result in A (0xB7)
+        uint8_t OR_A_A();
+
         // Bitwise OR with A and B register, result in A (0xB0)
         uint8_t OR_A_B();
 
@@ -359,11 +362,23 @@ class CPU {
         // Jump relative if zero flag set (0x28)
         uint8_t JR_Z_e8();
 
+        // Jump relative if carry flag not set (0x30)
+        uint8_t JR_NC_e8();
+
+        // Jump relative if carry flag set (0x38)
+        uint8_t JR_C_e8();
+
         // Return from subroutine if zero flag not set (0xC0)
         uint8_t RET_NZ();
 
         // Return from subroutine if zero flag set (0xC8)
         uint8_t RET_Z();
+
+        // Return from subroutine if carry flag not set (0xD0)
+        uint8_t RET_NC();
+
+        // Return from subroutine if carry flag set (0xD8)
+        uint8_t RET_C();
 
         // Load A Indirect Group
         uint8_t LD_A_BC_ptr(); // 0x0A
@@ -554,6 +569,12 @@ class CPU {
         
         // Write value of register L into address pointed to by HL (0x75)
         uint8_t LD_at_HL_L();
+
+        // Rotate A register left circular (0x07)
+        uint8_t RLCA();
+
+        // Decimal Adjust Accumulator (0x27)
+        uint8_t DAA();
     private:
         // Performs addition (ADD/ADC) and updates flags
         // carry: if true, adds the C flag to the sum

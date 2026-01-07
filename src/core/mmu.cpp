@@ -1,6 +1,7 @@
 #include "mmu.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "joypad.h"
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -26,13 +27,17 @@ void MMU::connect_ppu(PPU* p) {
     ppu = p;
 }
 
+void MMU::connect_joypad(Joypad* j) {
+    joypad = j;
+}
+
 bool MMU::load_game(const uint8_t* data, size_t size) {
     // Clear cartridge memory
     memset(cart, 0, sizeof(cart));
 
     if (size > sizeof(cart)) {
         // For now, if ROM is larger than 32KB, throw an error. In the future this needs to be handled by MBC logic.
-        throw std::runtime_error("[MMU] ERROR: ROM size (" + std::to_string(size) + ") larger than 32KB. Bank switching is not currently supported.");
+        throw std::runtime_error("[MMU] ERROR: ROM size (" + std::to_string(size) + ") larger than 32KB. Bank switching/MBC logic is not currently supported.");
         std::memcpy(cart, data, sizeof(cart));
     } else {
         std::memcpy(cart, data, size);
@@ -67,8 +72,8 @@ uint8_t MMU::read_byte(uint16_t address) {
     } else if (address >= 0xFF00 && address <= 0xFF7F) {
         // Joypad (0xFF00)
         if (address == 0xFF00) {
-            return 0xFF; // No keys pressed (Active Low)
-        }
+            return joypad ? joypad->get_joyp_state() : 0xFF;
+        }   
 
         // I/O Registers
         if (address == 0xFF04 && cpu) {
@@ -108,6 +113,15 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
     std::stringstream ss;
 
     // Special write cases (i.e. I/O registers, VRAM, etc)
+    // Joypad
+    if (address == 0xFF00) {
+        if (joypad) {
+            // Only bits 4 and 5 are writable by the CPU
+            joypad->control_mask = (value & 0x30);
+        }
+        return;
+    }
+
     // PPU
     if (address >= 0xFF40 && address <= 0xFF47) {
         // Always update the I/O memory map so reads (like in PPU::draw_scanline) get the correct value

@@ -518,6 +518,7 @@ void CPU::init_instructions() {
     instructions[0x7C] = { "LD A, H", &CPU::LD_A_H };
     instructions[0x7D] = { "LD A, L", &CPU::LD_A_L };
 
+    instructions[0xB7] = { "OR A, A", &CPU::OR_A_A };
     instructions[0xB0] = { "OR A, B", &CPU::OR_A_B };
     instructions[0xB1] = { "OR A, C", &CPU::OR_A_C };
     instructions[0xB2] = { "OR A, D", &CPU::OR_A_D };
@@ -543,8 +544,15 @@ void CPU::init_instructions() {
     instructions[0xE6] = { "AND A, n8", &CPU::AND_A_n8 };
 
     instructions[0x28] = { "JR Z, e8", &CPU::JR_Z_e8 };
+
+    instructions[0x30] = { "JR NC, e8", &CPU::JR_NC_e8 };
+    instructions[0x38] = { "JR C, e8", &CPU::JR_C_e8 };
+
     instructions[0xC0] = { "RET NZ", &CPU::RET_NZ };
     instructions[0xC8] = { "RET Z", &CPU::RET_Z };
+
+    instructions[0xD0] = { "RET NC", &CPU::RET_NC };
+    instructions[0xD8] = { "RET C", &CPU::RET_C };
 
     instructions[0xE1] = { "POP HL", &CPU::POP_HL };
     instructions[0xC1] = { "POP BC", &CPU::POP_BC };
@@ -660,6 +668,9 @@ void CPU::init_instructions() {
     instructions[0x73] = { "LD (HL), E", &CPU::LD_at_HL_E };
     instructions[0x74] = { "LD (HL), H", &CPU::LD_at_HL_H };
     instructions[0x75] = { "LD (HL), L", &CPU::LD_at_HL_L };
+
+    instructions[0x07] = { "RLCA", &CPU::RLCA };
+    instructions[0x27] = { "DAA", &CPU::DAA };
 }
 
 uint8_t CPU::XXX() {
@@ -1354,6 +1365,16 @@ uint8_t CPU::LD_A_A() {
     return 4;
 }
 
+uint8_t CPU::OR_A_A() {
+    a |= a;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+
+    return 4;
+}
+
 uint8_t CPU::OR_A_B() {
     a |= b;
     set_flag_z(a == 0);
@@ -1542,6 +1563,30 @@ uint8_t CPU::JR_Z_e8() {
     return 8;
 }
 
+uint8_t CPU::JR_C_e8() {
+    int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
+    pc++;
+
+    if (get_flag_c()) {
+        pc += offset;
+        return 12;
+    }
+    
+    return 8;
+}
+
+uint8_t CPU::JR_NC_e8() {
+    int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
+    pc++;
+
+    if (!get_flag_c()) {
+        pc += offset;
+        return 12;
+    }
+    
+    return 8;
+}
+
 uint8_t CPU::RET_NZ() {
     if (!get_flag_z()) {
         // Pop address from stack into PC
@@ -1562,6 +1607,30 @@ uint8_t CPU::RET_Z() {
     }
 
     return 8;
+}
+
+uint8_t CPU::RET_NC() {
+    if (!get_flag_c()) {
+        // Pop address from stack into PC
+        pc = mmu->read_word(sp);
+        sp += 2;
+
+        return 20;
+    } else {
+        return 8;
+    }
+}
+
+uint8_t CPU::RET_C() {
+    if (get_flag_c()) {
+        // Pop address from stack into PC
+        pc = mmu->read_word(sp);
+        sp += 2;
+
+        return 20;
+    } else {
+        return 8;
+    }
 }
 
 uint8_t CPU::LD_A_BC_ptr() {
@@ -2247,4 +2316,55 @@ uint8_t CPU::LD_at_HL_L() {
     mmu->write_byte(address, l);
     
     return 8;
+}
+
+uint8_t CPU::RLCA() {
+    // Find bit 7 and rotate it
+    uint8_t bit7 = (a & 0x80) >> 7;
+    a = (a << 1) | bit7;
+
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(bit7 == 1);
+
+    return 4;
+}
+
+uint8_t CPU::DAA() {
+    uint8_t adjustment = 0;
+    bool new_carry = false;
+
+    if (!get_flag_n()) {
+        // After an ADD operation
+        if (get_flag_c() || a > 0x99) {
+            adjustment |= 0x60;
+            new_carry = true;
+        }
+        if (get_flag_h() || (a & 0x0F) > 0x09) {
+            adjustment |= 0x06;
+        }
+    } else {
+        // After a SUB operation
+        if (get_flag_c()) {
+            adjustment |= 0x60;
+            new_carry = true;
+        }
+        if (get_flag_h()) {
+            adjustment |= 0x06;
+        }
+        
+        // Subtract the adjustment instead of adding it
+        a -= adjustment;
+    }
+
+    if (!get_flag_n()) {
+        a += adjustment;
+    }
+
+    set_flag_z(a == 0);
+    set_flag_h(false);
+    set_flag_c(new_carry);
+
+    return 4;
 }
