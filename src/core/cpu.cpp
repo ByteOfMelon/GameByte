@@ -2377,38 +2377,22 @@ uint8_t CPU::RLCA() {
 
 uint8_t CPU::DAA() {
     uint8_t adjustment = 0;
-    bool new_carry = false;
+    bool carry = false;
 
-    if (!get_flag_n()) {
-        // After an ADD operation
-        if (get_flag_c() || a > 0x99) {
-            adjustment |= 0x60;
-            new_carry = true;
-        }
-        if (get_flag_h() || (a & 0x0F) > 0x09) {
-            adjustment |= 0x06;
-        }
-    } else {
-        // After a SUB operation
-        if (get_flag_c()) {
-            adjustment |= 0x60;
-            new_carry = true;
-        }
-        if (get_flag_h()) {
-            adjustment |= 0x06;
-        }
-        
-        // Subtract the adjustment instead of adding it
-        a -= adjustment;
+    if (get_flag_h() || (!get_flag_n() && (a & 0x0F) > 0x09)) {
+        adjustment |= 0x06;
+    }
+    
+    if (get_flag_c() || (!get_flag_n() && a > 0x99)) {
+        adjustment |= 0x60;
+        carry = true;
     }
 
-    if (!get_flag_n()) {
-        a += adjustment;
-    }
+    a += (get_flag_n() ? -adjustment : adjustment);
 
     set_flag_z(a == 0);
     set_flag_h(false);
-    set_flag_c(new_carry);
+    set_flag_c(carry);
 
     return 4;
 }

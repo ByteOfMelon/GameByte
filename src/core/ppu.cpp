@@ -96,7 +96,9 @@ void PPU::tick(uint8_t cycles) {
                 current_ly++;
                 
                 if (current_ly > 153) {
-                    current_ly = 0; // Reset to start of next frame
+                    // Reset to start of next frame
+                    current_ly = 0;
+                    window_line_counter = 0;
                     mode = 2;
                 }
             }
@@ -142,6 +144,9 @@ void PPU::draw_scanline() {
     uint8_t bgp = mmu->read_byte(0xFF47);
     uint32_t shades[] = { 0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000 };
 
+    // Sprite priority check
+    uint8_t bg_color_ids[160] = {0};
+
     // Check master bg/window enable bit (LCDC bit 0)
     if (!(lcdc & 0x01)) {
         // Fill scanline with white (color 0)
@@ -154,6 +159,7 @@ void PPU::draw_scanline() {
         uint8_t wy = mmu->read_byte(0xFF4A);
         uint8_t wx = mmu->read_byte(0xFF4B) - 7;
         bool window_enabled = (lcdc & 0x20) && (ly >= wy);
+        bool window_drawn = false;
 
         // Get scroll (x and y) pos
         uint8_t scy = mmu->read_byte(0xFF42);
@@ -167,7 +173,8 @@ void PPU::draw_scanline() {
             if (window_enabled && px >= wx) {
                 map_base = (lcdc & 0x40) ? 0x9C00 : 0x9800; // LCDC bit 6
                 t_x = px - wx;
-                t_y = ly - wy;
+                t_y = window_line_counter;
+                window_drawn = true;
             } else {
                 map_base = (lcdc & 0x08) ? 0x9C00 : 0x9800; // LCDC bit 3
                 t_x = px + scx;
@@ -181,6 +188,7 @@ void PPU::draw_scanline() {
             // Tile data addressing
             bool is_unsigned = (lcdc & 0x10);
             uint16_t tile_data_addr;
+            
             if (is_unsigned) {
                 tile_data_addr = 0x8000 + (tile_index * 16);
             } else {
@@ -196,35 +204,69 @@ void PPU::draw_scanline() {
             int bit = 7 - (t_x % 8);
             uint8_t color_id = ((b2 >> bit) & 0x01) << 1 | ((b1 >> bit) & 0x01);
 
+            bg_color_ids[px] = color_id;
+
             // Apply palette and write to framebuffer
             uint8_t palette_color = (bgp >> (color_id * 2)) & 0x03;
             framebuffer[ly * 160 + px] = shades[palette_color];
         }
+
+        if (window_drawn) {
+            window_line_counter++;
+        }
     }
 
-    // Draw sprite(s) on top of background
+    // Draw sprite(s) (10 max per line) on top of background
     if (lcdc & 0x02) {
+        int sprites_on_line = 0;
+        uint8_t used_sprite_x_coords[160] = {};
         for (int i = 0; i < 40; i++) {
             uint16_t oam_addr = 0xFE00 + (i * 4);
+            if (sprites_on_line >= 10) break;
             
             // Get proper sprite attributes
             uint8_t sprite_y = mmu->read_byte(oam_addr) - 16;
             uint8_t sprite_x = mmu->read_byte(oam_addr + 1) - 8;
             uint8_t tile_index = mmu->read_byte(oam_addr + 2);
             uint8_t attributes = mmu->read_byte(oam_addr + 3);
+            uint8_t sprite_height = (lcdc & 0x04) ? 16 : 8;
 
             // Check if sprite is visible on this scanline (ly)
-            if (ly >= sprite_y && ly < sprite_y + 8) {
+            if (ly >= sprite_y && ly < sprite_y + sprite_height) {
+                sprites_on_line++;
+
+                // Check if sprite at this X coordinate has already been used (priority)
+                if (sprite_x >= 0 && sprite_x < 160) {
+                    if (used_sprite_x_coords[sprite_x]) {
+                        continue;
+                    } else {
+                        used_sprite_x_coords[sprite_x] = 1;
+                    }
+                }
+
                 // Determine which palette to use (Bit 4: 0=OBP0, 1=OBP1)
                 uint8_t obp = mmu->read_byte((attributes & 0x10) ? 0xFF49 : 0xFF48);
                 
                 // Fetch tile data (Sprites always use 0x8000-0x8FFF unsigned mode)
-                uint16_t tile_addr = 0x8000 + (tile_index * 16);
+                uint16_t tile_addr;
                 uint8_t line = (ly - sprite_y);
-                
+
                 // Handle vertical flip (Bit 6)
-                if (attributes & 0x40) line = 7 - line;
-                
+                if (attributes & 0x40) line = (sprite_height - 1) - line;
+
+                if (sprite_height == 16) {
+                    // For 8x16 sprites, bit 0 of the tile index is ignored for the base
+                    uint8_t base_tile = tile_index & 0xFE;
+                    uint8_t actual_tile = (line < 8) ? base_tile : (base_tile | 0x01);
+                    
+                    tile_addr = 0x8000 + (actual_tile * 16);
+                    // Reset line to 0-7 for the specific 8x8 tile selected
+                    line %= 8;
+                } else {
+                    // Standard 8x8 mode
+                    tile_addr = 0x8000 + (tile_index * 16);
+                }
+
                 uint8_t b1 = mmu->read_byte(tile_addr + (line * 2));
                 uint8_t b2 = mmu->read_byte(tile_addr + (line * 2) + 1);
 
@@ -238,8 +280,14 @@ void PPU::draw_scanline() {
 
                     // Don't draw transparent pixels (color 0)
                     if (color_id != 0) {
-                        uint8_t palette_color = (obp >> (color_id * 2)) & 0x03;
-                        framebuffer[ly * 160 + pixel_x] = shades[palette_color];
+                        // OBJ-to-BG priority (OAM bit 7)
+                        uint8_t bg_id = bg_color_ids[pixel_x];
+                        bool bg_over_obj = (attributes & 0x80) != 0;
+
+                        if (!bg_over_obj || (bg_over_obj && bg_id == 0)) {
+                            uint8_t palette_color = (obp >> (color_id * 2)) & 0x03;
+                            framebuffer[ly * 160 + pixel_x] = shades[palette_color];
+                        }
                     }
                 }
             }

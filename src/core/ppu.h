@@ -71,6 +71,9 @@ class PPU {
         // Check last mode for STAT interrupt triggering
         uint8_t last_mode = 255;
 
+        // Window internal line counter
+        uint8_t window_line_counter = 0;
+
         // Read VRAM and fill frame buffer
         void draw_scanline();
 

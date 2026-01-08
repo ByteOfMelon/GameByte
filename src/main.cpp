@@ -2,6 +2,12 @@
 #include <SDL3/SDL.h>
 #include <string>
 
+#include "core/cpu.h"
+#include "core/mmu.h"
+#include "core/rom.h"
+#include "core/ppu.h"
+#include "core/joypad.h"
+
 // Structure to hold file dialog state
 struct DialogState {
     bool complete = false;
@@ -17,12 +23,6 @@ void SDLCALL file_dialog_callback(void* userdata, const char* const* filelist, i
     }
     state->complete = true;
 }
-
-#include "core/cpu.h"
-#include "core/mmu.h"
-#include "core/rom.h"
-#include "core/ppu.h"
-#include "core/joypad.h"
 
 // Constants for timing
 const int CYCLES_PER_FRAME = 70224;
