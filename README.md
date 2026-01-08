@@ -41,4 +41,6 @@ GameByte is a research emulator that is not intended to be fully accurate or usa
 | Tetris                         | Nintendo      | 1989     | Playable                 |
 | Dr. Mario                      | Nintendo      | 1990     | Playable                 |
 | Space Invaders (Japan)         | Taito         | 1990     | Playable                 |
+| Asteroids                      | Accolade      | 1992     | Playable                 |
+| Minesweeper: Soukaitei         | Pack-in-Video | 1991     | Playable                 |
 | (Pretty much) Every other game | Anyone        | Any time | Nothing/possibly menus   |
