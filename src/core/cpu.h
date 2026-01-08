@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <array>
 #include "mmu.h"
 
 /**
@@ -61,6 +62,22 @@ class CPU {
 
         // Internal counter for div timer
         uint16_t internal_counter;
+
+        // Debugging
+        struct InstructionLog {
+            uint16_t pc;
+            uint8_t opcode;
+            uint8_t a, b, c, d, e, h, l, f;
+            uint16_t sp;
+        };
+
+        static const size_t HISTORY_SIZE = 100;
+        std::array<InstructionLog, HISTORY_SIZE> history;
+        size_t history_pos = 0;
+        bool history_wrapped = false;
+
+        void log_instruction(uint8_t opcode);
+        void dump_history();
 
         // Constructor
         CPU();

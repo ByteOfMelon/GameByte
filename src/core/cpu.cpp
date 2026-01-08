@@ -308,20 +308,78 @@ uint8_t CPU::step() {
     }
 
     uint8_t opcode = mmu->read_byte(pc);
+    log_instruction(opcode);
     pc++;
 
     uint8_t cycles = (this->*instructions[opcode].operate)();
 
     // Handle IME delay
-    if (this->ime_delay > 0) {
-        this->ime_delay--;
-        if (this->ime_delay == 0) {
-            this->ime = true;
+    if (ime_delay > 0) {
+        ime_delay--;
+        if (ime_delay == 0) {
+            ime = true;
         }
     }
 
     total_cycles += cycles;
     return cycles;
+}
+
+void CPU::log_instruction(uint8_t opcode) {
+    InstructionLog& log = history[history_pos];
+    log.pc = pc;
+    log.opcode = opcode;
+    log.a = a;
+    log.b = b;
+    log.c = c;
+    log.d = d;
+    log.e = e;
+    log.h = h;
+    log.l = l;
+    log.f = f;
+    log.sp = sp;
+
+    history_pos++;
+    if (history_pos >= HISTORY_SIZE) {
+        history_pos = 0;
+        history_wrapped = true;
+    }
+}
+
+void CPU::dump_history() {
+    std::cout << "\n=== CPU INSTRUCTION HISTORY (Last " << HISTORY_SIZE << ") ===\n";
+    std::cout << "PC     | OP   | Mnemonic         | Registers\n";
+    std::cout << "-------|------|------------------|------------------------------------------------\n";
+
+    size_t start_pos = history_wrapped ? history_pos : 0;
+    size_t count = history_wrapped ? HISTORY_SIZE : history_pos;
+
+    for (size_t i = 0; i < count; i++) {
+        size_t idx = (start_pos + i) % HISTORY_SIZE;
+        const InstructionLog& log = history[idx];
+        
+        // Format output
+        std::cout << "0x" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << log.pc << " | ";
+        std::cout << "0x" << std::setw(2) << static_cast<int>(log.opcode) << " | ";
+        
+        std::string mnemonic = "UNIMPLEMENTED";
+        if (log.opcode < instructions.size()) {
+            mnemonic = instructions[log.opcode].name ? instructions[log.opcode].name : "UNIMPLEMENTED";
+        }
+        std::cout << std::left << std::setw(16) << std::setfill(' ') << mnemonic << " | ";
+        
+        std::cout << std::right << std::setfill('0');
+        std::cout << "A:" << std::hex << std::setw(2) << static_cast<int>(log.a) << " ";
+        std::cout << "B:" << std::setw(2) << static_cast<int>(log.b) << " ";
+        std::cout << "C:" << std::setw(2) << static_cast<int>(log.c) << " ";
+        std::cout << "D:" << std::setw(2) << static_cast<int>(log.d) << " ";
+        std::cout << "E:" << std::setw(2) << static_cast<int>(log.e) << " ";
+        std::cout << "H:" << std::setw(2) << static_cast<int>(log.h) << " ";
+        std::cout << "L:" << std::setw(2) << static_cast<int>(log.l) << " ";
+        std::cout << "F:" << std::setw(2) << static_cast<int>(log.f) << " ";
+        std::cout << "SP:" << std::setw(4) << log.sp << std::endl;
+    }
+    std::cout << "======================================================================\n" << std::dec;
 }
 
 void CPU::debug_interrupt_status() {
@@ -1046,7 +1104,7 @@ uint8_t CPU::DI() {
 
 uint8_t CPU::EI() {
     // Uses 2 cycle delay before enabling IME
-    this->ime_delay = 2; 
+    ime_delay = 2; 
     return 4;
 }
 
@@ -1285,7 +1343,7 @@ uint8_t CPU::RETI() {
 }
 
 uint8_t CPU::HALT() {
-    this->halted = true;
+    halted = true;
     return 4;
 }
 

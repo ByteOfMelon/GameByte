@@ -94,11 +94,6 @@ int main(int argc, char* argv[]) {
     uint32_t frame_count = 0;
     while (running) {
         frame_count++;
-
-        // Debug - initial VRAM dump
-        if (frame_count == 60) {
-            mmu.dump_vram();
-        }
         
         uint64_t start_time = SDL_GetTicks();
         int cycles_this_frame = 0;
@@ -151,10 +146,22 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Debug key
+        // Debug keys
         const bool* keys = SDL_GetKeyboardState(NULL);
         if (keys[SDL_SCANCODE_F1]) {
             mmu.dump_vram();
+        }
+
+        if (keys[SDL_SCANCODE_F2]) {
+            mmu.dump_hram();
+        }
+
+        if (keys[SDL_SCANCODE_F3]) {
+            cpu.debug_interrupt_status();
+        }
+
+        if (keys[SDL_SCANCODE_F4]) {
+            cpu.dump_history();
         }
 
         // Timing synchronization
