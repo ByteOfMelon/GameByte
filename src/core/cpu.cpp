@@ -233,7 +233,8 @@ uint8_t CPU::handle_interrupts() {
 
     // Any pending interrupt wakes the CPU
     if (pending > 0) {
-        this->halted = false;
+        halted = false;
+        stopped = false;
     }
 
     if (ime && pending > 0) {
@@ -300,8 +301,8 @@ uint8_t CPU::step() {
         return int_cycles; 
     }
 
-    // If halted, skip instruction execution
-    if (halted) {
+    // If halted or stopped, skip instruction execution
+    if (halted || stopped) {
         total_cycles += 4;
         return 4;
     }
@@ -476,157 +477,80 @@ uint8_t CPU::handle_cb_shift_rotate(uint8_t opcode, uint8_t value) {
 
 void CPU::init_instructions() {
     instructions.assign(256, { "XXX", &CPU::XXX });
+
+    // 0x00 - 0x0F
     instructions[0x00] = { "NOP", &CPU::NOP };
-
-    instructions[0xC3] = { "JP a16", &CPU::JP_a16 };
-    instructions[0xC2] = { "JP NZ, a16", &CPU::JP_NZ_a16 };
-    instructions[0xCA] = { "JP Z, a16", &CPU::JP_Z_a16 };
-    instructions[0xD2] = { "JP NC, a16", &CPU::JP_NC_a16 };
-    instructions[0xDA] = { "JP C, a16", &CPU::JP_C_a16 };
-    
-    instructions[0xAF] = { "XOR A, A", &CPU::XOR_A_A };
-    instructions[0xA8] = { "XOR A, B", &CPU::XOR_A_B };
-    instructions[0xA9] = { "XOR A, C", &CPU::XOR_A_C };
-    instructions[0xAA] = { "XOR A, D", &CPU::XOR_A_D };
-    instructions[0xAB] = { "XOR A, E", &CPU::XOR_A_E };
-    instructions[0xEE] = { "XOR A, n8", &CPU::XOR_A_n8 };
-
-    instructions[0x06] = { "LD B, n8", &CPU::LD_B_n8 };
-    instructions[0x08] = { "LD [a16], SP", &CPU::LD_a16_SP };
-    instructions[0x0E] = { "LD C, n8", &CPU::LD_C_n8 };
-    instructions[0x16] = { "LD D, n8", &CPU::LD_D_n8 };
-    instructions[0x1E] = { "LD E, n8", &CPU::LD_E_n8 };
-    instructions[0x26] = { "LD H, n8", &CPU::LD_H_n8 };
-    instructions[0x2E] = { "LD L, n8", &CPU::LD_L_n8 };
-    instructions[0x36] = { "LD [HL], n8", &CPU::LD_HL_n8 };
-    instructions[0x3E] = { "LD A, n8", &CPU::LD_A_n8 };
-
-    instructions[0x22] = { "LD (HL+), A", &CPU::LD_HL_ptr_inc_A };
-    instructions[0x32] = { "LD (HL-), A", &CPU::LD_HL_ptr_dec_A };
-
-    instructions[0x3D] = { "DEC A", &CPU::DEC_A };
-    instructions[0x05] = { "DEC B", &CPU::DEC_B };
-    instructions[0x0D] = { "DEC C", &CPU::DEC_C };
-    instructions[0x15] = { "DEC D", &CPU::DEC_D };
-    instructions[0x1D] = { "DEC E", &CPU::DEC_E };
-    instructions[0x25] = { "DEC H", &CPU::DEC_H };
-    instructions[0x2D] = { "DEC L", &CPU::DEC_L };
-    instructions[0x35] = { "DEC [HL]", &CPU::DEC_at_HL };
-    instructions[0x20] = { "JR NZ, e8", &CPU::JR_NZ_e8 };
-    instructions[0x18] = { "JR e8", &CPU::JR_e8 };
-    instructions[0xF3] = { "DI", &CPU::DI };
-    instructions[0xFB] = { "EI", &CPU::EI };
-    instructions[0xE0] = { "LDH [a8], A", &CPU::LDH_a8_a };
-    instructions[0xF0] = { "LDH A, [a8]", &CPU::LDH_a_a8 };
-    
-    instructions[0xFE] = { "CP A, n8", &CPU::CP_A_n8 };
-    instructions[0xBF] = { "CP A, A", &CPU::CP_A_A };
-    instructions[0xB8] = { "CP A, B", &CPU::CP_A_B };
-    instructions[0xB9] = { "CP A, C", &CPU::CP_A_C };
-    instructions[0xBA] = { "CP A, D", &CPU::CP_A_D };
-    instructions[0xBB] = { "CP A, E", &CPU::CP_A_E };
-    instructions[0xBC] = { "CP A, H", &CPU::CP_A_H };
-    instructions[0xBD] = { "CP A, L", &CPU::CP_A_L };
-    instructions[0xBE] = { "CP A, [HL]", &CPU::CP_at_HL };
-
-    instructions[0xCD] = { "CALL a16", &CPU::CALL_a16 };
-    instructions[0xCC] = { "CALL Z, a16", &CPU::CALL_Z_a16 };
-    instructions[0xC4] = { "CALL NZ, a16", &CPU::CALL_NZ_a16 };
-    instructions[0xC9] = { "RET", &CPU::RET };
-    instructions[0xD9] = { "RETI", &CPU::RETI };
-    instructions[0x76] = { "HALT", &CPU::HALT };
-    instructions[0x77] = { "LD (HL), A", &CPU::LD_HL_ptr_A };
-    instructions[0xEA] = { "LD [a16], A", &CPU::LD_a16_A };
-    instructions[0x2A] = { "LD A, (HL+)", &CPU::LD_A_HL_ptr_inc };
-    instructions[0x3A] = { "LD A, (HL-)", &CPU::LD_A_HL_ptr_dec };
-
-    instructions[0x09] = { "ADD HL, BC", &CPU::ADD_HL_BC };
-    instructions[0x19] = { "ADD HL, DE", &CPU::ADD_HL_DE };
-    instructions[0x29] = { "ADD HL, HL", &CPU::ADD_HL_HL };
-    instructions[0x39] = { "ADD HL, SP", &CPU::ADD_HL_SP };
-
-    instructions[0x3C] = { "INC A", &CPU::INC_A };
-    instructions[0x04] = { "INC B", &CPU::INC_B };
-    instructions[0x0C] = { "INC C", &CPU::INC_C };
-    instructions[0x14] = { "INC D", &CPU::INC_D };
-    instructions[0x1C] = { "INC E", &CPU::INC_E };
-    instructions[0x24] = { "INC H", &CPU::INC_H };
-    instructions[0x2C] = { "INC L", &CPU::INC_L };
-    instructions[0x34] = { "INC [HL]", &CPU::INC_at_HL };
-
-    instructions[0x03] = { "INC BC", &CPU::INC_BC };
-    instructions[0x13] = { "INC DE", &CPU::INC_DE };
-    instructions[0x23] = { "INC HL", &CPU::INC_HL };
-    instructions[0x33] = { "INC SP", &CPU::INC_SP };
-
     instructions[0x01] = { "LD BC, n16", &CPU::LD_BC_n16 };
     instructions[0x02] = { "LD (BC), A", &CPU::LD_BC_ptr_A };
+    instructions[0x03] = { "INC BC", &CPU::INC_BC };
+    instructions[0x04] = { "INC B", &CPU::INC_B };
+    instructions[0x05] = { "DEC B", &CPU::DEC_B };
+    instructions[0x06] = { "LD B, n8", &CPU::LD_B_n8 };
+    instructions[0x07] = { "RLCA", &CPU::RLCA };
+    instructions[0x08] = { "LD [a16], SP", &CPU::LD_a16_SP };
+    instructions[0x09] = { "ADD HL, BC", &CPU::ADD_HL_BC };
+    instructions[0x0A] = { "LD A, (BC)", &CPU::LD_A_BC_ptr };
+    instructions[0x0B] = { "DEC BC", &CPU::DEC_BC };
+    instructions[0x0C] = { "INC C", &CPU::INC_C };
+    instructions[0x0D] = { "DEC C", &CPU::DEC_C };
+    instructions[0x0E] = { "LD C, n8", &CPU::LD_C_n8 };
+    instructions[0x0F] = { "RRCA", &CPU::RRCA };
+
+    // 0x10 - 0x1F
+    instructions[0x10] = { "STOP", &CPU::STOP };
     instructions[0x11] = { "LD DE, n16", &CPU::LD_DE_n16 };
     instructions[0x12] = { "LD (DE), A", &CPU::LD_DE_ptr_A };
-    instructions[0x0A] = { "LD A, (BC)", &CPU::LD_A_BC_ptr };
+    instructions[0x13] = { "INC DE", &CPU::INC_DE };
+    instructions[0x14] = { "INC D", &CPU::INC_D };
+    instructions[0x15] = { "DEC D", &CPU::DEC_D };
+    instructions[0x16] = { "LD D, n8", &CPU::LD_D_n8 };
+    instructions[0x17] = { "RLA", &CPU::RLA };
+    instructions[0x18] = { "JR e8", &CPU::JR_e8 };
+    instructions[0x19] = { "ADD HL, DE", &CPU::ADD_HL_DE };
     instructions[0x1A] = { "LD A, (DE)", &CPU::LD_A_DE_ptr };
-    instructions[0x7E] = { "LD A, (HL)", &CPU::LD_A_HL_ptr };
-    instructions[0xFA] = { "LD A, [a16]", &CPU::LD_A_a16_ptr };
-    instructions[0x21] = { "LD HL, n16", &CPU::LD_HL_n16 };
-    instructions[0x31] = { "LD SP, n16", &CPU::LD_SP_n16 };
-
-    instructions[0x0B] = { "DEC BC", &CPU::DEC_BC };
     instructions[0x1B] = { "DEC DE", &CPU::DEC_DE };
-    instructions[0x2B] = { "DEC HL", &CPU::DEC_HL };
-    instructions[0x3B] = { "DEC SP", &CPU::DEC_SP };
+    instructions[0x1C] = { "INC E", &CPU::INC_E };
+    instructions[0x1D] = { "DEC E", &CPU::DEC_E };
+    instructions[0x1E] = { "LD E, n8", &CPU::LD_E_n8 };
+    instructions[0x1F] = { "RRA", &CPU::RRA };
 
-    instructions[0x7F] = { "LD A, A", &CPU::LD_A_A };
-    instructions[0x78] = { "LD A, B", &CPU::LD_A_B };
-    instructions[0x79] = { "LD A, C", &CPU::LD_A_C };
-    instructions[0x7A] = { "LD A, D", &CPU::LD_A_D };
-    instructions[0x7B] = { "LD A, E", &CPU::LD_A_E };
-    instructions[0x7C] = { "LD A, H", &CPU::LD_A_H };
-    instructions[0x7D] = { "LD A, L", &CPU::LD_A_L };
-
-    instructions[0xB7] = { "OR A, A", &CPU::OR_A_A };
-    instructions[0xB0] = { "OR A, B", &CPU::OR_A_B };
-    instructions[0xB1] = { "OR A, C", &CPU::OR_A_C };
-    instructions[0xB2] = { "OR A, D", &CPU::OR_A_D };
-    instructions[0xB3] = { "OR A, E", &CPU::OR_A_E };
-    instructions[0xB4] = { "OR A, H", &CPU::OR_A_H };
-    instructions[0xB5] = { "OR A, L", &CPU::OR_A_L };
-    instructions[0xB6] = { "OR A, [HL]", &CPU::OR_A_HL };
-    instructions[0xF6] = { "OR A, n8", &CPU::OR_A_n8 };
-
-    instructions[0xF5] = { "PUSH AF", &CPU::PUSH_AF };
-    instructions[0xC5] = { "PUSH BC", &CPU::PUSH_BC };
-    instructions[0xD5] = { "PUSH DE", &CPU::PUSH_DE };
-    instructions[0xE5] = { "PUSH HL", &CPU::PUSH_HL };
-
-    instructions[0xA7] = { "AND A, A", &CPU::AND_A_A };
-    instructions[0xA0] = { "AND A, B", &CPU::AND_A_B };
-    instructions[0xA1] = { "AND A, C", &CPU::AND_A_C };
-    instructions[0xA2] = { "AND A, D", &CPU::AND_A_D };
-    instructions[0xA3] = { "AND A, E", &CPU::AND_A_E };
-    instructions[0xA4] = { "AND A, H", &CPU::AND_A_H };
-    instructions[0xA5] = { "AND A, L", &CPU::AND_A_L };
-
-    instructions[0xE6] = { "AND A, n8", &CPU::AND_A_n8 };
-
+    // 0x20 - 0x2F
+    instructions[0x20] = { "JR NZ, e8", &CPU::JR_NZ_e8 };
+    instructions[0x21] = { "LD HL, n16", &CPU::LD_HL_n16 };
+    instructions[0x22] = { "LD (HL+), A", &CPU::LD_HL_ptr_inc_A };
+    instructions[0x23] = { "INC HL", &CPU::INC_HL };
+    instructions[0x24] = { "INC H", &CPU::INC_H };
+    instructions[0x25] = { "DEC H", &CPU::DEC_H };
+    instructions[0x26] = { "LD H, n8", &CPU::LD_H_n8 };
+    instructions[0x27] = { "DAA", &CPU::DAA };
     instructions[0x28] = { "JR Z, e8", &CPU::JR_Z_e8 };
-
-    instructions[0x30] = { "JR NC, e8", &CPU::JR_NC_e8 };
-    instructions[0x38] = { "JR C, e8", &CPU::JR_C_e8 };
-
-    instructions[0xC0] = { "RET NZ", &CPU::RET_NZ };
-    instructions[0xC8] = { "RET Z", &CPU::RET_Z };
-
-    instructions[0xD0] = { "RET NC", &CPU::RET_NC };
-    instructions[0xD8] = { "RET C", &CPU::RET_C };
-
-    instructions[0xE1] = { "POP HL", &CPU::POP_HL };
-    instructions[0xC1] = { "POP BC", &CPU::POP_BC };
-    instructions[0xD1] = { "POP DE", &CPU::POP_DE };
-    instructions[0xF1] = { "POP AF", &CPU::POP_AF };
-
+    instructions[0x29] = { "ADD HL, HL", &CPU::ADD_HL_HL };
+    instructions[0x2A] = { "LD A, (HL+)", &CPU::LD_A_HL_ptr_inc };
+    instructions[0x2B] = { "DEC HL", &CPU::DEC_HL };
+    instructions[0x2C] = { "INC L", &CPU::INC_L };
+    instructions[0x2D] = { "DEC L", &CPU::DEC_L };
+    instructions[0x2E] = { "LD L, n8", &CPU::LD_L_n8 };
     instructions[0x2F] = { "CPL", &CPU::CPL };
-    instructions[0xCB] = { "PREFIX CB", &CPU::PREFIX_CB };
 
+    // 0x30 - 0x3F
+    instructions[0x30] = { "JR NC, e8", &CPU::JR_NC_e8 };
+    instructions[0x31] = { "LD SP, n16", &CPU::LD_SP_n16 };
+    instructions[0x32] = { "LD (HL-), A", &CPU::LD_HL_ptr_dec_A };
+    instructions[0x33] = { "INC SP", &CPU::INC_SP };
+    instructions[0x34] = { "INC [HL]", &CPU::INC_at_HL };
+    instructions[0x35] = { "DEC [HL]", &CPU::DEC_at_HL };
+    instructions[0x36] = { "LD [HL], n8", &CPU::LD_HL_n8 };
+    instructions[0x37] = { "SCF", &CPU::SCF };
+    instructions[0x38] = { "JR C, e8", &CPU::JR_C_e8 };
+    instructions[0x39] = { "ADD HL, SP", &CPU::ADD_HL_SP };
+    instructions[0x3A] = { "LD A, (HL-)", &CPU::LD_A_HL_ptr_dec };
+    instructions[0x3B] = { "DEC SP", &CPU::DEC_SP };
+    instructions[0x3C] = { "INC A", &CPU::INC_A };
+    instructions[0x3D] = { "DEC A", &CPU::DEC_A };
+    instructions[0x3E] = { "LD A, n8", &CPU::LD_A_n8 };
+    instructions[0x3F] = { "CCF", &CPU::CCF };
+
+    // 0x40 - 0x4F
     instructions[0x40] = { "LD B, B", &CPU::LD_B_B };
     instructions[0x41] = { "LD B, C", &CPU::LD_B_C };
     instructions[0x42] = { "LD B, D", &CPU::LD_B_D };
@@ -635,56 +559,78 @@ void CPU::init_instructions() {
     instructions[0x45] = { "LD B, L", &CPU::LD_B_L };
     instructions[0x46] = { "LD B, [HL]", &CPU::LD_B_HL };
     instructions[0x47] = { "LD B, A", &CPU::LD_B_A };
-
-    instructions[0x4F] = { "LD C, A", &CPU::LD_C_A };
     instructions[0x48] = { "LD C, B", &CPU::LD_C_B };
     instructions[0x49] = { "LD C, C", &CPU::LD_C_C };
     instructions[0x4A] = { "LD C, D", &CPU::LD_C_D };
     instructions[0x4B] = { "LD C, E", &CPU::LD_C_E };
     instructions[0x4C] = { "LD C, H", &CPU::LD_C_H };
     instructions[0x4D] = { "LD C, L", &CPU::LD_C_L };
-
     instructions[0x4E] = { "LD C, [HL]", &CPU::LD_C_HL };
-    instructions[0x56] = { "LD D, [HL]", &CPU::LD_D_HL };
-    instructions[0x5E] = { "LD E, [HL]", &CPU::LD_E_HL };
-    instructions[0x66] = { "LD H, [HL]", &CPU::LD_H_HL };
-    instructions[0x6E] = { "LD L, [HL]", &CPU::LD_L_HL };
+    instructions[0x4F] = { "LD C, A", &CPU::LD_C_A };
 
+    // 0x50 - 0x5F
+    instructions[0x50] = { "LD D, B", &CPU::LD_D_B };
+    instructions[0x51] = { "LD D, C", &CPU::LD_D_C };
+    instructions[0x52] = { "LD D, D", &CPU::LD_D_D };
+    instructions[0x53] = { "LD D, E", &CPU::LD_D_E };
+    instructions[0x54] = { "LD D, H", &CPU::LD_D_H };
+    instructions[0x55] = { "LD D, L", &CPU::LD_D_L };
+    instructions[0x56] = { "LD D, [HL]", &CPU::LD_D_HL };
+    instructions[0x57] = { "LD D, A", &CPU::LD_D_A };
     instructions[0x58] = { "LD E, B", &CPU::LD_E_B };
     instructions[0x59] = { "LD E, C", &CPU::LD_E_C };
     instructions[0x5A] = { "LD E, D", &CPU::LD_E_D };
     instructions[0x5B] = { "LD E, E", &CPU::LD_E_E };
     instructions[0x5C] = { "LD E, H", &CPU::LD_E_H };
     instructions[0x5D] = { "LD E, L", &CPU::LD_E_L };
+    instructions[0x5E] = { "LD E, [HL]", &CPU::LD_E_HL };
     instructions[0x5F] = { "LD E, A", &CPU::LD_E_A };
 
-    instructions[0xC7] = { "RST 00H", &CPU::RST_00 };
-    instructions[0xCF] = { "RST 08H", &CPU::RST_08 };
-    instructions[0xD7] = { "RST 10H", &CPU::RST_10 };
-    instructions[0xDF] = { "RST 18H", &CPU::RST_18 };
-    instructions[0xE7] = { "RST 20H", &CPU::RST_20 };
-    instructions[0xEF] = { "RST 28H", &CPU::RST_28 };
-    instructions[0xF7] = { "RST 30H", &CPU::RST_30 };
-    instructions[0xFF] = { "RST 38H", &CPU::RST_38 };
+    // 0x60 - 0x6F
+    instructions[0x60] = { "LD H, B", &CPU::LD_H_B };
+    instructions[0x61] = { "LD H, C", &CPU::LD_H_C };
+    instructions[0x62] = { "LD H, D", &CPU::LD_H_D };
+    instructions[0x63] = { "LD H, E", &CPU::LD_H_E };
+    instructions[0x64] = { "LD H, H", &CPU::LD_H_H };
+    instructions[0x65] = { "LD H, L", &CPU::LD_H_L };
+    instructions[0x66] = { "LD H, [HL]", &CPU::LD_H_HL };
+    instructions[0x67] = { "LD H, A", &CPU::LD_H_A };
+    instructions[0x68] = { "LD L, B", &CPU::LD_L_B };
+    instructions[0x69] = { "LD L, C", &CPU::LD_L_C };
+    instructions[0x6A] = { "LD L, D", &CPU::LD_L_D };
+    instructions[0x6B] = { "LD L, E", &CPU::LD_L_E };
+    instructions[0x6C] = { "LD L, H", &CPU::LD_L_H };
+    instructions[0x6D] = { "LD L, L", &CPU::LD_L_L };
+    instructions[0x6E] = { "LD L, [HL]", &CPU::LD_L_HL };
+    instructions[0x6F] = { "LD L, A", &CPU::LD_L_A };
 
-    instructions[0x87] = { "ADD A, A", &CPU::ADD_A_A };
+    // 0x70 - 0x7F
+    instructions[0x70] = { "LD (HL), B", &CPU::LD_at_HL_B };
+    instructions[0x71] = { "LD (HL), C", &CPU::LD_at_HL_C };
+    instructions[0x72] = { "LD (HL), D", &CPU::LD_at_HL_D };
+    instructions[0x73] = { "LD (HL), E", &CPU::LD_at_HL_E };
+    instructions[0x74] = { "LD (HL), H", &CPU::LD_at_HL_H };
+    instructions[0x75] = { "LD (HL), L", &CPU::LD_at_HL_L };
+    instructions[0x76] = { "HALT", &CPU::HALT };
+    instructions[0x77] = { "LD (HL), A", &CPU::LD_HL_ptr_A };
+    instructions[0x78] = { "LD A, B", &CPU::LD_A_B };
+    instructions[0x79] = { "LD A, C", &CPU::LD_A_C };
+    instructions[0x7A] = { "LD A, D", &CPU::LD_A_D };
+    instructions[0x7B] = { "LD A, E", &CPU::LD_A_E };
+    instructions[0x7C] = { "LD A, H", &CPU::LD_A_H };
+    instructions[0x7D] = { "LD A, L", &CPU::LD_A_L };
+    instructions[0x7E] = { "LD A, (HL)", &CPU::LD_A_HL_ptr };
+    instructions[0x7F] = { "LD A, A", &CPU::LD_A_A };
+
+    // 0x80 - 0x8F
     instructions[0x80] = { "ADD A, B", &CPU::ADD_A_B };
     instructions[0x81] = { "ADD A, C", &CPU::ADD_A_C };
     instructions[0x82] = { "ADD A, D", &CPU::ADD_A_D };
     instructions[0x83] = { "ADD A, E", &CPU::ADD_A_E };
     instructions[0x84] = { "ADD A, H", &CPU::ADD_A_H };
     instructions[0x85] = { "ADD A, L", &CPU::ADD_A_L };
-
-    instructions[0xE9] = { "JP HL", &CPU::JP_HL };
-    
-    instructions[0xE2] = { "LDH [C], A", &CPU::LDH_C_ptr_A };
-    instructions[0xF2] = { "LDH A, [C]", &CPU::LDH_A_C_ptr };
-
-    instructions[0x37] = { "SCF", &CPU::SCF };
-    instructions[0x3F] = { "CCF", &CPU::CCF };
-
-    instructions[0xCE] = { "ADC A, n8", &CPU::ADC_A_n8 };
-    instructions[0x8F] = { "ADC A, A", &CPU::ADC_A_A };
+    instructions[0x86] = { "ADD A, [HL]", &CPU::ADD_A_HL };
+    instructions[0x87] = { "ADD A, A", &CPU::ADD_A_A };
     instructions[0x88] = { "ADC A, B", &CPU::ADC_A_B };
     instructions[0x89] = { "ADC A, C", &CPU::ADC_A_C };
     instructions[0x8A] = { "ADC A, D", &CPU::ADC_A_D };
@@ -692,11 +638,9 @@ void CPU::init_instructions() {
     instructions[0x8C] = { "ADC A, H", &CPU::ADC_A_H };
     instructions[0x8D] = { "ADC A, L", &CPU::ADC_A_L };
     instructions[0x8E] = { "ADC A, [HL]", &CPU::ADC_A_HL };
+    instructions[0x8F] = { "ADC A, A", &CPU::ADC_A_A };
 
-    instructions[0x86] = { "ADD A, [HL]", &CPU::ADD_A_HL };
-    instructions[0xC6] = { "ADD A, n8", &CPU::ADD_A_n8 };
-
-    instructions[0x97] = { "SUB A, A", &CPU::SUB_A_A };
+    // 0x90 - 0x9F
     instructions[0x90] = { "SUB A, B", &CPU::SUB_A_B };
     instructions[0x91] = { "SUB A, C", &CPU::SUB_A_C };
     instructions[0x92] = { "SUB A, D", &CPU::SUB_A_D };
@@ -704,9 +648,7 @@ void CPU::init_instructions() {
     instructions[0x94] = { "SUB A, H", &CPU::SUB_A_H };
     instructions[0x95] = { "SUB A, L", &CPU::SUB_A_L };
     instructions[0x96] = { "SUB A, [HL]", &CPU::SUB_A_HL };
-    instructions[0xD6] = { "SUB A, n8", &CPU::SUB_A_n8 };
-
-    instructions[0x9F] = { "SBC A, A", &CPU::SBC_A_A };
+    instructions[0x97] = { "SUB A, A", &CPU::SUB_A_A };
     instructions[0x98] = { "SBC A, B", &CPU::SBC_A_B };
     instructions[0x99] = { "SBC A, C", &CPU::SBC_A_C };
     instructions[0x9A] = { "SBC A, D", &CPU::SBC_A_D };
@@ -714,51 +656,130 @@ void CPU::init_instructions() {
     instructions[0x9C] = { "SBC A, H", &CPU::SBC_A_H };
     instructions[0x9D] = { "SBC A, L", &CPU::SBC_A_L };
     instructions[0x9E] = { "SBC A, [HL]", &CPU::SBC_A_HL };
-    instructions[0xDE] = { "SBC A, n8", &CPU::SBC_A_n8 };
-
+    instructions[0x9F] = { "SBC A, A", &CPU::SBC_A_A };
+    
+    // 0xA0 - 0xAF
+    instructions[0xA0] = { "AND A, B", &CPU::AND_A_B };
+    instructions[0xA1] = { "AND A, C", &CPU::AND_A_C };
+    instructions[0xA2] = { "AND A, D", &CPU::AND_A_D };
+    instructions[0xA3] = { "AND A, E", &CPU::AND_A_E };
+    instructions[0xA4] = { "AND A, H", &CPU::AND_A_H };
+    instructions[0xA5] = { "AND A, L", &CPU::AND_A_L };
     instructions[0xA6] = { "AND A, [HL]", &CPU::AND_A_HL };
-    instructions[0x6F] = { "LD L, A", &CPU::LD_L_A };
-    instructions[0x68] = { "LD L, B", &CPU::LD_L_B };
-    instructions[0x69] = { "LD L, C", &CPU::LD_L_C };
-    instructions[0x6B] = { "LD L, E", &CPU::LD_L_E };
+    instructions[0xA7] = { "AND A, A", &CPU::AND_A_A };
+    instructions[0xA8] = { "XOR A, B", &CPU::XOR_A_B };
+    instructions[0xA9] = { "XOR A, C", &CPU::XOR_A_C };
+    instructions[0xAA] = { "XOR A, D", &CPU::XOR_A_D };
+    instructions[0xAB] = { "XOR A, E", &CPU::XOR_A_E };
+    instructions[0xAC] = { "XOR A, H", &CPU::XOR_A_H };
+    instructions[0xAD] = { "XOR A, L", &CPU::XOR_A_L };
+    instructions[0xAE] = { "XOR A, [HL]", &CPU::XOR_A_HL };
+    instructions[0xAF] = { "XOR A, A", &CPU::XOR_A_A };
+    
+    // 0xB0 - 0xBF
+    instructions[0xB0] = { "OR A, B", &CPU::OR_A_B };
+    instructions[0xB1] = { "OR A, C", &CPU::OR_A_C };
+    instructions[0xB2] = { "OR A, D", &CPU::OR_A_D };
+    instructions[0xB3] = { "OR A, E", &CPU::OR_A_E };
+    instructions[0xB4] = { "OR A, H", &CPU::OR_A_H };
+    instructions[0xB5] = { "OR A, L", &CPU::OR_A_L };
+    instructions[0xB6] = { "OR A, [HL]", &CPU::OR_A_HL };
+    instructions[0xB7] = { "OR A, A", &CPU::OR_A_A };
+    instructions[0xB8] = { "CP A, B", &CPU::CP_A_B };
+    instructions[0xB9] = { "CP A, C", &CPU::CP_A_C };
+    instructions[0xBA] = { "CP A, D", &CPU::CP_A_D };
+    instructions[0xBB] = { "CP A, E", &CPU::CP_A_E };
+    instructions[0xBC] = { "CP A, H", &CPU::CP_A_H };
+    instructions[0xBD] = { "CP A, L", &CPU::CP_A_L };
+    instructions[0xBE] = { "CP A, [HL]", &CPU::CP_at_HL };
+    instructions[0xBF] = { "CP A, A", &CPU::CP_A_A };
 
-    instructions[0x60] = { "LD H, B", &CPU::LD_H_B };
-    instructions[0x61] = { "LD H, C", &CPU::LD_H_C };
-    instructions[0x62] = { "LD H, D", &CPU::LD_H_D };
-    instructions[0x63] = { "LD H, E", &CPU::LD_H_E };
-    instructions[0x64] = { "LD H, H", &CPU::LD_H_H };
-    instructions[0x65] = { "LD H, L", &CPU::LD_H_L };
-    instructions[0x67] = { "LD H, A", &CPU::LD_H_A };
+    // 0xC0 - 0xCF
+    instructions[0xC0] = { "RET NZ", &CPU::RET_NZ };
+    instructions[0xC1] = { "POP BC", &CPU::POP_BC };
+    instructions[0xC2] = { "JP NZ, a16", &CPU::JP_NZ_a16 };
+    instructions[0xC3] = { "JP a16", &CPU::JP_a16 };
+    instructions[0xC4] = { "CALL NZ, a16", &CPU::CALL_NZ_a16 };
+    instructions[0xC5] = { "PUSH BC", &CPU::PUSH_BC };
+    instructions[0xC6] = { "ADD A, n8", &CPU::ADD_A_n8 };
+    instructions[0xC7] = { "RST 00H", &CPU::RST_00 };
+    instructions[0xC8] = { "RET Z", &CPU::RET_Z };
+    instructions[0xC9] = { "RET", &CPU::RET };
+    instructions[0xCA] = { "JP Z, a16", &CPU::JP_Z_a16 };
+    instructions[0xCB] = { "PREFIX CB", &CPU::PREFIX_CB };
+    instructions[0xCC] = { "CALL Z, a16", &CPU::CALL_Z_a16 };
+    instructions[0xCD] = { "CALL a16", &CPU::CALL_a16 };
+    instructions[0xCE] = { "ADC A, n8", &CPU::ADC_A_n8 };
+    instructions[0xCF] = { "RST 08H", &CPU::RST_08 };
 
-    instructions[0x50] = { "LD D, B", &CPU::LD_D_B };
-    instructions[0x51] = { "LD D, C", &CPU::LD_D_C };
-    instructions[0x52] = { "LD D, D", &CPU::LD_D_D };
-    instructions[0x53] = { "LD D, E", &CPU::LD_D_E };
-    instructions[0x54] = { "LD D, H", &CPU::LD_D_H };
-    instructions[0x55] = { "LD D, L", &CPU::LD_D_L };
-    instructions[0x57] = { "LD D, A", &CPU::LD_D_A };
+    // 0xD0 - 0xDF
+    instructions[0xD0] = { "RET NC", &CPU::RET_NC };
+    instructions[0xD1] = { "POP DE", &CPU::POP_DE };
+    instructions[0xD2] = { "JP NC, a16", &CPU::JP_NC_a16 };
+    instructions[0xD3] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xD4] = { "CALL NC, a16", &CPU::CALL_NC_a16 };
+    instructions[0xD5] = { "PUSH DE", &CPU::PUSH_DE };
+    instructions[0xD6] = { "SUB A, n8", &CPU::SUB_A_n8 };
+    instructions[0xD7] = { "RST 10H", &CPU::RST_10 };
+    instructions[0xD8] = { "RET C", &CPU::RET_C };
+    instructions[0xD9] = { "RETI", &CPU::RETI };
+    instructions[0xDA] = { "JP C, a16", &CPU::JP_C_a16 };
+    instructions[0xDB] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xDC] = { "CALL C, a16", &CPU::CALL_C_a16 };
+    instructions[0xDD] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xDE] = { "SBC A, n8", &CPU::SBC_A_n8 };
+    instructions[0xDF] = { "RST 18H", &CPU::RST_18 };
 
-    instructions[0x70] = { "LD (HL), B", &CPU::LD_at_HL_B };
-    instructions[0x71] = { "LD (HL), C", &CPU::LD_at_HL_C };
-    instructions[0x72] = { "LD (HL), D", &CPU::LD_at_HL_D };
-    instructions[0x73] = { "LD (HL), E", &CPU::LD_at_HL_E };
-    instructions[0x74] = { "LD (HL), H", &CPU::LD_at_HL_H };
-    instructions[0x75] = { "LD (HL), L", &CPU::LD_at_HL_L };
-
-    instructions[0x07] = { "RLCA", &CPU::RLCA };
-    instructions[0x0F] = { "RRCA", &CPU::RRCA };
-    instructions[0x27] = { "DAA", &CPU::DAA };
-    instructions[0x17] = { "RLA", &CPU::RLA };
-    instructions[0x1F] = { "RRA", &CPU::RRA };
-
-    instructions[0xF9] = { "LD SP, HL", &CPU::LD_SP_HL };
+    // 0xE0 - 0xEF
+    instructions[0xE0] = { "LDH [a8], A", &CPU::LDH_a8_a };
+    instructions[0xE1] = { "POP HL", &CPU::POP_HL };
+    instructions[0xE2] = { "LDH [C], A", &CPU::LDH_C_ptr_A };
+    instructions[0xE3] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xE4] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xE5] = { "PUSH HL", &CPU::PUSH_HL };
+    instructions[0xE6] = { "AND A, n8", &CPU::AND_A_n8 };
+    instructions[0xE7] = { "RST 20H", &CPU::RST_20 };
     instructions[0xE8] = { "ADD SP, e8", &CPU::ADD_SP_e8 };
+    instructions[0xE9] = { "JP HL", &CPU::JP_HL };
+    instructions[0xEA] = { "LD [a16], A", &CPU::LD_a16_A };
+    instructions[0xEB] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xEC] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xED] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xEE] = { "XOR A, n8", &CPU::XOR_A_n8 };
+    instructions[0xEF] = { "RST 28H", &CPU::RST_28 };
+
+    // 0xF0 - 0xFF
+    instructions[0xF0] = { "LDH A, [a8]", &CPU::LDH_a_a8 };
+    instructions[0xF1] = { "POP AF", &CPU::POP_AF };
+    instructions[0xF2] = { "LDH A, [C]", &CPU::LDH_A_C_ptr };
+    instructions[0xF3] = { "DI", &CPU::DI };
+    instructions[0xF4] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xF5] = { "PUSH AF", &CPU::PUSH_AF };
+    instructions[0xF6] = { "OR A, n8", &CPU::OR_A_n8 };
+    instructions[0xF7] = { "RST 30H", &CPU::RST_30 };
+    instructions[0xF8] = { "LD HL, SP + e8", &CPU::LD_HL_SP_e8 };
+    instructions[0xF9] = { "LD SP, HL", &CPU::LD_SP_HL };
+    instructions[0xFA] = { "LD A, [a16]", &CPU::LD_A_a16_ptr };
+    instructions[0xFB] = { "EI", &CPU::EI };
+    instructions[0xFC] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xFD] = { "ILLEGAL", &CPU::ILLEGAL };
+    instructions[0xFE] = { "CP A, n8", &CPU::CP_A_n8 };
+    instructions[0xFF] = { "RST 38H", &CPU::RST_38 };
+}
+
+uint8_t CPU::ILLEGAL() {
+    uint8_t opcode = mmu->read_byte(pc - 1);
+    std::stringstream ss;
+    ss << "Illegal opcode 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(opcode)
+       << " at 0x" << (pc - 1);
+    throw std::runtime_error("[CPU] " + ss.str());
+    return 0;
 }
 
 uint8_t CPU::XXX() {
     uint8_t opcode = mmu->read_byte(pc - 1);
     std::stringstream ss;
-    ss << "Illegal/unimplemented opcode 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(opcode)
+    ss << "Unimplemented opcode 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(opcode)
        << " at 0x" << (pc - 1);
     throw std::runtime_error("[CPU] " + ss.str());
     return 0;
@@ -865,6 +886,34 @@ uint8_t CPU::XOR_A_E() {
     set_flag_h(false);
     set_flag_c(false);
     return 4;
+}
+
+uint8_t CPU::XOR_A_H() {
+    a ^= h;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+    return 4;
+}
+
+uint8_t CPU::XOR_A_L() {
+    a ^= l;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+    return 4;
+}
+
+uint8_t CPU::XOR_A_HL() {
+    uint8_t value = mmu->read_byte(get_hl());
+    a ^= value;
+    set_flag_z(a == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+    return 8;
 }
 
 uint8_t CPU::XOR_A_n8() {
@@ -1171,6 +1220,40 @@ uint8_t CPU::CALL_Z_a16() {
     pc += 2;
 
     if (get_flag_z()) {
+        // Push current PC to stack
+        sp -= 2;
+        mmu->write_word(sp, pc);
+
+        // Jump to address
+        pc = address;
+        return 24;
+    }
+
+    return 12;
+}
+
+uint8_t CPU::CALL_NC_a16() {
+    uint16_t address = mmu->read_word(pc);
+    pc += 2;
+
+    if (!get_flag_c()) {
+        // Push current PC to stack
+        sp -= 2;
+        mmu->write_word(sp, pc);
+
+        // Jump to address
+        pc = address;
+        return 24;
+    }
+
+    return 12;
+}
+
+uint8_t CPU::CALL_C_a16() {
+    uint16_t address = mmu->read_word(pc);
+    pc += 2;
+
+    if (get_flag_c()) {
         // Push current PC to stack
         sp -= 2;
         mmu->write_word(sp, pc);
@@ -2372,8 +2455,23 @@ uint8_t CPU::LD_L_C() {
     return 4;
 }
 
+uint8_t CPU::LD_L_D() {
+    l = d;
+    return 4;
+}
+
 uint8_t CPU::LD_L_E() {
     l = e;
+    return 4;
+}
+
+uint8_t CPU::LD_L_H() {
+    l = h;
+    return 4;
+}
+
+uint8_t CPU::LD_L_L() {
+    // NOP equivalent, here for consistency
     return 4;
 }
 
@@ -2583,4 +2681,26 @@ uint8_t CPU::ADD_SP_e8() {
     sp += offset;
 
     return 16;
+}
+
+uint8_t CPU::STOP() {
+    uint8_t next_byte = mmu->read_byte(pc);
+    pc++;
+    
+    stopped = true;
+    return 4;
+}
+
+uint8_t CPU::LD_HL_SP_e8() {
+    int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
+    pc++;
+
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(((sp & 0x0F) + (offset & 0x0F)) > 0x0F);
+    set_flag_c(((sp & 0xFF) + (offset & 0xFF)) > 0xFF);
+
+    set_hl(sp + offset);
+
+    return 12;
 }

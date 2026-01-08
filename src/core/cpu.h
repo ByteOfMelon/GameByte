@@ -56,6 +56,9 @@ class CPU {
         // Halted flag
         bool halted = false;
 
+        // Stopped flag
+        bool stopped = false;
+
         // Internal counter for div timer
         uint16_t internal_counter;
 
@@ -122,7 +125,10 @@ class CPU {
 
         // Opcode Implementations
 
-        // Illegal/unimplemented opcode
+        // Illegal opcode
+        uint8_t ILLEGAL();
+
+        // Unimplemented opcode
         uint8_t XXX();
 
         // No operation (0x00)
@@ -157,6 +163,15 @@ class CPU {
 
         // XOR A with E (0xAB)
         uint8_t XOR_A_E();
+
+        // XOR A with H (0xAC)
+        uint8_t XOR_A_H();
+
+        // XOR A with L (0xAD)
+        uint8_t XOR_A_L();
+
+        // XOR A with value of HL register pair (0xAE)
+        uint8_t XOR_A_HL();
 
         // XOR A with 8-bit immediate (0xEE)
         uint8_t XOR_A_n8();
@@ -232,6 +247,12 @@ class CPU {
 
         // Call 16-bit immediate address if zero flag set (0xCC)
         uint8_t CALL_Z_a16();
+
+        // Call 16-bit immediate address if carry flag not set (0xD4)
+        uint8_t CALL_NC_a16();
+
+        // Call 16-bit immediate address if carry flag set (0xDC)
+        uint8_t CALL_C_a16();
 
         // Return from subroutine (0xC9)
         uint8_t RET();
@@ -564,7 +585,10 @@ class CPU {
         uint8_t LD_L_A(); // 0x6F
         uint8_t LD_L_B(); // 0x68
         uint8_t LD_L_C(); // 0x69
+        uint8_t LD_L_D(); // 0x6A
         uint8_t LD_L_E(); // 0x6B
+        uint8_t LD_L_H(); // 0x6C
+        uint8_t LD_L_L(); // 0x6D
 
         // Load into register H group
         uint8_t LD_H_A(); // 0x67
@@ -622,6 +646,12 @@ class CPU {
 
         // Add 8 bit iommediate to stack pointer (0xE8)
         uint8_t ADD_SP_e8();
+
+        // Stop CPU until button press (0x10)
+        uint8_t STOP();
+
+        // Add signed 8-bit immediate to stack pointer and store result in HL (0xF8)
+        uint8_t LD_HL_SP_e8();
     private:
         // Helper to get state of the timer multiplexer
         bool get_timer_enable_bit(uint16_t counter, uint8_t tac);
