@@ -127,17 +127,18 @@ bool CPU::get_timer_enable_bit(uint16_t counter, uint8_t tac) {
 void CPU::tick_timers(uint8_t cycles) {
     for (int i = 0; i < cycles; i++) {
         // Handle pending reloads
+        bool in_reload = false;
+
         if (tima_reload_delay > 0) {
+            in_reload = true;
             tima_reload_delay--;
 
             // If delay hits 0, then reload TIMA from TMA
             if (tima_reload_delay == 0) {
                 uint8_t tma = mmu->read_byte(0xFF06);
                 mmu->write_byte(0xFF05, tma);
-
-                // Request timer interrupt (bit 2)
-                uint8_t if_reg = mmu->read_byte(0xFF0F);
-                mmu->write_byte(0xFF0F, if_reg | 0x04);
+                
+                in_reload = false;
             }
         }
 
@@ -150,7 +151,7 @@ void CPU::tick_timers(uint8_t cycles) {
         bool new_signal = get_timer_enable_bit(internal_counter, tac);
 
         // Increment TIMA on falling edge
-        if (old_signal && !new_signal) {
+        if (old_signal && !new_signal && !in_reload) {
             uint8_t tima = mmu->read_byte(0xFF05);
             
             // Increment TIMA
@@ -158,8 +159,11 @@ void CPU::tick_timers(uint8_t cycles) {
             
             // If timer overflowed to 0, then reload after 4 cycle delay
             if (tima == 0x00) {
-                tima_reload_delay = 4;
                 mmu->write_byte(0xFF05, 0x00);
+                tima_reload_delay = 4; 
+
+                uint8_t if_reg = mmu->read_byte(0xFF0F);
+                mmu->write_byte(0xFF0F, if_reg | 0x04);
             } else {
                 mmu->write_byte(0xFF05, tima);
             }
@@ -181,7 +185,8 @@ void CPU::sync_timer_on_div_write() {
         tima++;
         if (tima == 0x00) {
             tima_reload_delay = 4;
-            mmu->write_byte(0xFF05, 0x00);
+            uint8_t if_reg = mmu->read_byte(0xFF0F);
+            mmu->write_byte(0xFF0F, if_reg | 0x04);
         } else {
             mmu->write_byte(0xFF05, tima);
         }
@@ -199,26 +204,27 @@ void CPU::sync_timer_on_tac_write(uint8_t new_tac) {
         tima++;
         if (tima == 0x00) {
             tima_reload_delay = 4;
-            mmu->write_byte(0xFF05, 0x00);
+            uint8_t if_reg = mmu->read_byte(0xFF0F);
+            mmu->write_byte(0xFF0F, if_reg | 0x04);
         } else {
             mmu->write_byte(0xFF05, tima);
         }
     }
 }
 
+void CPU::sync_timer_on_tma_write(uint8_t value) {
+    // Placeholder for any future behavior needed when TMA is written to
+}
+
 void CPU::sync_timer_on_tima_write(uint8_t value) {
     // Edge case - write ignored when delay == 1 (TIMA will be reloaded to TMA next cycle)
     if (tima_reload_delay == 1) {
-        mmu->write_byte(0xFF05, 0x00);
         return;
     }
 
     // Normal case - If reload is pending (> 1 cycle left), writing cancels the reload.
     if (tima_reload_delay > 1) {
         tima_reload_delay = 0;
-
-        uint8_t if_reg = mmu->read_byte(0xFF0F);
-        mmu->write_byte(0xFF0F, if_reg | 0x04);
     }
 }
 

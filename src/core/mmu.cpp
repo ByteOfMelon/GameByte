@@ -171,6 +171,7 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
     // TMA (0xFF06)
     if (address == 0xFF06) {
         io[address - 0xFF00] = value;
+        if (cpu) cpu->sync_timer_on_tma_write(value);
         return;
     }
 

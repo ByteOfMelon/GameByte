@@ -118,6 +118,7 @@ class CPU {
         // Timer sync helpers, called by MMU on writes to timer registers
         void sync_timer_on_div_write();
         void sync_timer_on_tac_write(uint8_t new_tac);
+        void sync_timer_on_tma_write(uint8_t value);
         void sync_timer_on_tima_write(uint8_t value);
 
         // Interrupt handlers
