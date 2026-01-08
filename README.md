@@ -36,9 +36,9 @@ GameByte is a research emulator that is not intended to be fully accurate or usa
 
 ## Compatibility List (tested games only)
 
-| **Game Title**                 | **Publisher** | **Year** | **State** |
-|--------------------------------|---------------|----------|-----------|
-| Tetris                         | Nintendo      | 1989     | Playable  |
-| Dr. Mario                      | Nintendo      | 1990     | Menus     |
-| Space Invaders (Japan)         | Taito         | 1990     | Playable  |
-| (Pretty much) Every other game | Anyone        | Any time | Nothing   |
+| **Game Title**                 | **Publisher** | **Year** | **State**                |
+|--------------------------------|---------------|----------|--------------------------|
+| Tetris                         | Nintendo      | 1989     | Playable                 |
+| Dr. Mario                      | Nintendo      | 1990     | Playable                 |
+| Space Invaders (Japan)         | Taito         | 1990     | Playable                 |
+| (Pretty much) Every other game | Anyone        | Any time | Nothing/possibly menus   |

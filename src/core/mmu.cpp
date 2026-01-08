@@ -84,7 +84,10 @@ uint8_t MMU::read_byte(uint16_t address) {
                 case 0xFF41: return ppu->get_stat();
                 case 0xFF42: return ppu->get_scy();
                 case 0xFF43: return ppu->get_scx();
-                case 0xFF44: return ppu->get_ly();
+                case 0xFF44:
+                    // If LCD is off, LY returns 0
+                    if (!(ppu->get_lcdc() & 0x80)) return 0;
+                    return ppu->get_ly();
                 case 0xFF45: return ppu->get_lyc();
                 case 0xFF47: return ppu->get_bgp();
             }
@@ -121,10 +124,18 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
         // Always update the I/O memory map so reads (like in PPU::draw_scanline) get the correct value
         io[address - 0xFF00] = value;
 
+        // STAT write needs special handling to preserve read-only bits
+        uint8_t current_stat = ppu->get_stat();
+        uint8_t writable_bits = value & 0x78;
+        uint8_t read_only_bits = current_stat & 0x07;
+
         if (!ppu) return;
         switch (address) {
             case 0xFF40: ppu->set_lcdc(value); break;
-            case 0xFF41: ppu->set_stat(value); break;
+            case 0xFF41: 
+                // Only bits 3-6 are writable - bits 0-2 are read-only PPU status
+                ppu->set_stat(writable_bits | read_only_bits);
+                break;
             case 0xFF42: ppu->set_scy(value);  break;
             case 0xFF43: ppu->set_scx(value);  break;
             case 0xFF44: ppu->reset_ly();      break;
