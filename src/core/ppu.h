@@ -74,6 +74,9 @@ class PPU {
         // Window internal line counter
         uint8_t window_line_counter = 0;
 
+        // Flag to indicate if PPU is rendering first frame after LCD enable
+        bool first_frame_after_enable = false;
+
         // Read VRAM and fill frame buffer
         void draw_scanline();
 

@@ -146,12 +146,26 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
     // DIV register (0xFF04)
     if (address == 0xFF04) {
         // Writing to DIV register resets it
-        cpu->reset_internal_counter();
+        cpu->sync_timer_on_div_write();
         return;
     }
 
-    // TIMA (0xFF05), TMA (0xFF06), TAC (0xFF07)
-    if (address >= 0xFF05 && address <= 0xFF07) {
+    // TIMA (0xFF05)
+    if (address == 0xFF05) {
+        cpu->sync_timer_on_tima_write(value);
+        io[address - 0xFF00] = value;
+        return;
+    }
+
+    // TMA (0xFF06)
+    if (address == 0xFF06) {
+        io[address - 0xFF00] = value;
+        return;
+    }
+
+    // TAC (0xFF07)
+    if (address == 0xFF07) {
+        cpu->sync_timer_on_tac_write(value);
         io[address - 0xFF00] = value;
         return;
     }

@@ -51,6 +51,7 @@ void PPU::tick(uint8_t cycles) {
         ppu_cycles = 0;
         current_ly = 0;
         mode = 2; // When LCD is re-enabled, restart in OAM Search (Mode 2)
+        first_frame_after_enable = true;
         return;
     }
 
@@ -83,6 +84,7 @@ void PPU::tick(uint8_t cycles) {
                 if (current_ly == 144) {
                     mode = 1; 
                     request_interrupt(0); // V-blank Interrupt
+                    first_frame_after_enable = false;
                 } else {
                     mode = 2; 
                 }
@@ -143,6 +145,14 @@ void PPU::draw_scanline() {
     // Get the background palette (BGP) at 0xFF47
     uint8_t bgp = mmu->read_byte(0xFF47);
     uint32_t shades[] = { 0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000 };
+
+    // If this is the first frame after LCD enable, fill with white
+    if (first_frame_after_enable) {
+        for (int px = 0; px < 160; px++) {
+            framebuffer[ly * 160 + px] = shades[0];
+        }
+        return; 
+    }
 
     // Sprite priority check
     uint8_t bg_color_ids[160] = {0};

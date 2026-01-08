@@ -102,30 +102,35 @@ int main(int argc, char* argv[]) {
         
         uint64_t start_time = SDL_GetTicks();
         int cycles_this_frame = 0;
-
-        // Handle SDL events
-        while (SDL_PollEvent(&e) != 0) {
-            // Handle quit event
-            if (e.type == SDL_EVENT_QUIT) {
-                running = false;
-            }
-
-            // Input handoff from SDL to Joypad
-            if (joypad.handle_sdl_event(e)) {
-                // Request Joypad Interrupt (bit 4 of IF register)
-                uint8_t if_reg = mmu.read_byte(0xFF0F);
-                mmu.write_byte(0xFF0F, if_reg | 0x10);
-            }
-        }
+        int cycles_since_last_poll = 0;
 
         // Run CPU for one frame
         try {
             while (cycles_this_frame < CYCLES_PER_FRAME) {
                 int cycles = cpu.step();
                 cycles_this_frame += cycles;
+                cycles_since_last_poll += cycles;
                 
                 cpu.tick_timers(cycles);
                 ppu.tick(cycles);
+
+                // Poll for input every scanline (~456 cycles)
+                if (cycles_since_last_poll >= 456) {
+                    while (SDL_PollEvent(&e) != 0) {
+                        // Handle quit event
+                        if (e.type == SDL_EVENT_QUIT) {
+                            running = false;
+                        }
+
+                        // Input handoff from SDL to Joypad
+                        if (joypad.handle_sdl_event(e)) {
+                            // Request Joypad Interrupt (bit 4 of IF register)
+                            uint8_t if_reg = mmu.read_byte(0xFF0F);
+                            mmu.write_byte(0xFF0F, if_reg | 0x10);
+                        }
+                    }
+                    cycles_since_last_poll = 0;
+                }
 
                 // Check if frame is ready to be drawn
                 if (ppu.get_ly() == 144) {

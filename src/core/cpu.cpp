@@ -17,6 +17,9 @@ CPU::CPU() {
     internal_counter = 0;
     
     ime = false;
+    tima_reload_delay = 0;
+    ime_delay = 0;
+    halted = false;
 }
 
 uint16_t CPU::get_af() const { 
@@ -101,55 +104,123 @@ void CPU::connect_mmu(MMU* m) {
     mmu->write_byte(0xFFFF, 0x00); // IE
 }
 
+bool CPU::get_timer_enable_bit(uint16_t counter, uint8_t tac) {
+    // Bit 2 of TAC is timer enable
+    if (!(tac & 0x04)) return false;
+
+    // Select bit based on Frequency (TAC bits 0-1)
+    // 00: 4096 Hz   (Bit 9)
+    // 01: 262144 Hz (Bit 3)
+    // 10: 65536 Hz  (Bit 5)
+    // 11: 16384 Hz  (Bit 7)
+    uint16_t mask = 0;
+    switch (tac & 0x03) {
+        case 0x00: mask = (1 << 9); break;
+        case 0x01: mask = (1 << 3); break;
+        case 0x02: mask = (1 << 5); break;
+        case 0x03: mask = (1 << 7); break;
+    }
+
+    return (counter & mask) != 0;
+}
+
 void CPU::tick_timers(uint8_t cycles) {
-    // Save old counter to check for falling edges
-    uint16_t old_counter = internal_counter;
-    internal_counter += cycles;
+    for (int i = 0; i < cycles; i++) {
+        // Handle pending reloads
+        if (tima_reload_delay > 0) {
+            tima_reload_delay--;
 
-    // Get TAC register (timer control)
-    uint8_t tac = mmu->read_byte(0xFF07);
-
-    // If timer is enabled
-    if (tac & 0x04) {
-        // Determine the bit we are watching for a falling edge on
-
-        // Reference:
-        // 00: 4096 Hz   = Bit 9
-        // 01: 262144 Hz = Bit 3
-        // 10: 65536 Hz  = Bit 5
-        // 11: 16384 Hz  = Bit 7
-        uint16_t bit_mask = 0;
-        switch (tac & 0x03) {
-            case 0x00: bit_mask = (1 << 9); break;
-            case 0x01: bit_mask = (1 << 3); break;
-            case 0x02: bit_mask = (1 << 5); break;
-            case 0x03: bit_mask = (1 << 7); break;
-        }
-
-        // Check for falling edge: was high, now low
-        bool old_bit = (old_counter & bit_mask);
-        bool new_bit = (internal_counter & bit_mask);
-
-        if (old_bit && !new_bit) {
-            // Increment TIMA
-            uint8_t tima = mmu->read_byte(0xFF05);
-            tima++;
-            
-            // Check for overflow (0xFF -> 0x00)
-            if (tima == 0x00) {
-                // Determine value to reload from TMA
+            // If delay hits 0, then reload TIMA from TMA
+            if (tima_reload_delay == 0) {
                 uint8_t tma = mmu->read_byte(0xFF06);
-                tima = tma;
+                mmu->write_byte(0xFF05, tma);
 
-                // Request timer interrupt (Bit 2 of IF)
+                // Request timer interrupt (bit 2)
                 uint8_t if_reg = mmu->read_byte(0xFF0F);
                 mmu->write_byte(0xFF0F, if_reg | 0x04);
             }
+        }
 
+        // Detect falling edge
+        uint8_t tac = mmu->read_byte(0xFF07);
+        bool old_signal = get_timer_enable_bit(internal_counter, tac);
+        
+        internal_counter++;
+        
+        bool new_signal = get_timer_enable_bit(internal_counter, tac);
+
+        // Increment TIMA on falling edge
+        if (old_signal && !new_signal) {
+            uint8_t tima = mmu->read_byte(0xFF05);
+            
+            // Increment TIMA
+            tima++;
+            
+            // If timer overflowed to 0, then reload after 4 cycle delay
+            if (tima == 0x00) {
+                tima_reload_delay = 4;
+                mmu->write_byte(0xFF05, 0x00);
+            } else {
+                mmu->write_byte(0xFF05, tima);
+            }
+        }
+    }
+}
+
+void CPU::sync_timer_on_div_write() {
+    uint8_t tac = mmu->read_byte(0xFF07);
+    bool old_signal = get_timer_enable_bit(internal_counter, tac);
+    
+    internal_counter = 0;
+    
+    bool new_signal = get_timer_enable_bit(internal_counter, tac);
+
+    // If signal fell, increment TIMA
+    if (old_signal && !new_signal) {
+        uint8_t tima = mmu->read_byte(0xFF05);
+        tima++;
+        if (tima == 0x00) {
+            tima_reload_delay = 4;
+            mmu->write_byte(0xFF05, 0x00);
+        } else {
             mmu->write_byte(0xFF05, tima);
         }
     }
-} 
+}
+
+void CPU::sync_timer_on_tac_write(uint8_t new_tac) {
+    uint8_t old_tac = mmu->read_byte(0xFF07);
+    bool old_signal = get_timer_enable_bit(internal_counter, old_tac);
+    bool new_signal = get_timer_enable_bit(internal_counter, new_tac);
+
+    // If writing to TAC causes a falling edge (e.g. disabling timer), TIMA increments
+    if (old_signal && !new_signal) {
+        uint8_t tima = mmu->read_byte(0xFF05);
+        tima++;
+        if (tima == 0x00) {
+            tima_reload_delay = 4;
+            mmu->write_byte(0xFF05, 0x00);
+        } else {
+            mmu->write_byte(0xFF05, tima);
+        }
+    }
+}
+
+void CPU::sync_timer_on_tima_write(uint8_t value) {
+    // Edge case - write ignored when delay == 1 (TIMA will be reloaded to TMA next cycle)
+    if (tima_reload_delay == 1) {
+        mmu->write_byte(0xFF05, 0x00);
+        return;
+    }
+
+    // Normal case - If reload is pending (> 1 cycle left), writing cancels the reload.
+    if (tima_reload_delay > 1) {
+        tima_reload_delay = 0;
+
+        uint8_t if_reg = mmu->read_byte(0xFF0F);
+        mmu->write_byte(0xFF0F, if_reg | 0x04);
+    }
+}
 
 void CPU::reset_internal_counter() {
     internal_counter = 0;
@@ -236,9 +307,6 @@ uint8_t CPU::step() {
     }
 
     uint8_t opcode = mmu->read_byte(pc);
-
-    // Enabling the below debug line will produce a LOT of output and cause significant slowdown
-    // printf("[CPU] DEBUG: Executing opcode 0x%02X (instruction %s) at address 0x%04X\n", opcode, instructions[opcode].name, pc);
     pc++;
 
     uint8_t cycles = (this->*instructions[opcode].operate)();
@@ -649,6 +717,7 @@ void CPU::init_instructions() {
 
     instructions[0xA6] = { "AND A, [HL]", &CPU::AND_A_HL };
     instructions[0x6F] = { "LD L, A", &CPU::LD_L_A };
+    instructions[0x68] = { "LD L, B", &CPU::LD_L_B };
     instructions[0x69] = { "LD L, C", &CPU::LD_L_C };
     instructions[0x6B] = { "LD L, E", &CPU::LD_L_E };
 
@@ -660,7 +729,12 @@ void CPU::init_instructions() {
     instructions[0x65] = { "LD H, L", &CPU::LD_H_L };
     instructions[0x67] = { "LD H, A", &CPU::LD_H_A };
 
+    instructions[0x50] = { "LD D, B", &CPU::LD_D_B };
+    instructions[0x51] = { "LD D, C", &CPU::LD_D_C };
+    instructions[0x52] = { "LD D, D", &CPU::LD_D_D };
+    instructions[0x53] = { "LD D, E", &CPU::LD_D_E };
     instructions[0x54] = { "LD D, H", &CPU::LD_D_H };
+    instructions[0x55] = { "LD D, L", &CPU::LD_D_L };
     instructions[0x57] = { "LD D, A", &CPU::LD_D_A };
 
     instructions[0x70] = { "LD (HL), B", &CPU::LD_at_HL_B };
@@ -671,7 +745,13 @@ void CPU::init_instructions() {
     instructions[0x75] = { "LD (HL), L", &CPU::LD_at_HL_L };
 
     instructions[0x07] = { "RLCA", &CPU::RLCA };
+    instructions[0x0F] = { "RRCA", &CPU::RRCA };
     instructions[0x27] = { "DAA", &CPU::DAA };
+    instructions[0x17] = { "RLA", &CPU::RLA };
+    instructions[0x1F] = { "RRA", &CPU::RRA };
+
+    instructions[0xF9] = { "LD SP, HL", &CPU::LD_SP_HL };
+    instructions[0xE8] = { "ADD SP, e8", &CPU::ADD_SP_e8 };
 }
 
 uint8_t CPU::XXX() {
@@ -2265,6 +2345,11 @@ uint8_t CPU::LD_L_A() {
     return 4;
 }
 
+uint8_t CPU::LD_L_B() {
+    l = b;
+    return 4;
+}
+
 uint8_t CPU::LD_L_C() {
     l = c;
     return 4;
@@ -2315,8 +2400,33 @@ uint8_t CPU::LD_D_A() {
     return 4;
 }
 
+uint8_t CPU::LD_D_B() {
+    d = b;
+    return 4;
+}
+
+uint8_t CPU::LD_D_C() {
+    d = c;
+    return 4;
+}
+
+uint8_t CPU::LD_D_D() {
+    // NOP equivalent, here for consistency
+    return 4;
+}
+
+uint8_t CPU::LD_D_E() {
+    d = e;
+    return 4;
+}
+
 uint8_t CPU::LD_D_H() {
     d = h;
+    return 4;
+}
+
+uint8_t CPU::LD_D_L() {
+    d = l;
     return 4;
 }
 
@@ -2375,6 +2485,19 @@ uint8_t CPU::RLCA() {
     return 4;
 }
 
+uint8_t CPU::RRCA() {
+    // Find bit 0 and rotate it
+    uint8_t bit0 = a & 0x01;
+    a = (a >> 1) | (bit0 << 7);
+
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(bit0 == 1);
+
+    return 4;
+}
+
 uint8_t CPU::DAA() {
     uint8_t adjustment = 0;
     bool carry = false;
@@ -2395,4 +2518,52 @@ uint8_t CPU::DAA() {
     set_flag_c(carry);
 
     return 4;
+}
+
+uint8_t CPU::RLA() {
+    uint8_t old_carry = get_flag_c() ? 1 : 0;
+    uint8_t new_carry = (a & 0x80) >> 7;
+
+    a = (a << 1) | old_carry;
+
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(new_carry == 1);
+
+    return 4;
+}
+
+uint8_t CPU::RRA() {
+    uint8_t old_carry = get_flag_c() ? 1 : 0;
+    uint8_t new_carry = a & 0x01;
+
+    a = (a >> 1) | (old_carry << 7);
+
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(new_carry == 1);
+
+    return 4;
+}
+
+uint8_t CPU::LD_SP_HL() {
+    sp = get_hl();
+    return 8;
+}
+
+uint8_t CPU::ADD_SP_e8() {
+    int8_t offset = static_cast<int8_t>(mmu->read_byte(pc));
+    pc++;
+
+    // Flags based on unsigned addition of lower 8 bits
+    set_flag_z(false);
+    set_flag_n(false);
+    set_flag_h(((sp & 0x0F) + (offset & 0x0F)) > 0x0F);
+    set_flag_c(((sp & 0xFF) + (offset & 0xFF)) > 0xFF);
+    
+    sp += offset;
+
+    return 16;
 }

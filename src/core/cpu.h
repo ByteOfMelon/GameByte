@@ -95,6 +95,11 @@ class CPU {
         // Reset internal counter
         void reset_internal_counter();
 
+        // Timer sync helpers, called by MMU on writes to timer registers
+        void sync_timer_on_div_write();
+        void sync_timer_on_tac_write(uint8_t new_tac);
+        void sync_timer_on_tima_write(uint8_t value);
+
         // Interrupt handlers
         uint8_t handle_interrupts();
         uint8_t execute_interrupt(uint8_t bit, uint16_t vector);
@@ -554,6 +559,7 @@ class CPU {
 
         // Load into L register group
         uint8_t LD_L_A(); // 0x6F
+        uint8_t LD_L_B(); // 0x68
         uint8_t LD_L_C(); // 0x69
         uint8_t LD_L_E(); // 0x6B
 
@@ -567,8 +573,13 @@ class CPU {
         uint8_t LD_H_L(); // 0x65
 
         // Load into D register group 
-        uint8_t LD_D_A(); // 0x57
+        uint8_t LD_D_B(); // 0x50
+        uint8_t LD_D_C(); // 0x51
+        uint8_t LD_D_D(); // 0x52
+        uint8_t LD_D_E(); // 0x53
         uint8_t LD_D_H(); // 0x54
+        uint8_t LD_D_L(); // 0x55
+        uint8_t LD_D_A(); // 0x57
 
         // Write value of register B into address pointed to by HL (0x70)
         uint8_t LD_at_HL_B();
@@ -591,9 +602,30 @@ class CPU {
         // Rotate A register left circular (0x07)
         uint8_t RLCA();
 
+        // Rotate A register right circular (0x0F)
+        uint8_t RRCA();
+
         // Decimal Adjust Accumulator (0x27)
         uint8_t DAA();
+
+        // Rotate left accumulator through carry (0x17)
+        uint8_t RLA();
+
+        // Rotate right accumulator through carry (0x1F)
+        uint8_t RRA();
+
+        // Load current value of HL register pair into stack pointer (0xF9)
+        uint8_t LD_SP_HL();
+
+        // Add 8 bit iommediate to stack pointer (0xE8)
+        uint8_t ADD_SP_e8();
     private:
+        // Helper to get state of the timer multiplexer
+        bool get_timer_enable_bit(uint16_t counter, uint8_t tac);
+    
+        // State of TIMA reload delay (4 cycles)
+        int tima_reload_delay = 0;
+
         // Performs addition (ADD/ADC) and updates flags
         // carry: if true, adds the C flag to the sum
         void alu_add(uint8_t val, bool carry);
