@@ -230,6 +230,9 @@ class CPU {
         // Call 16-bit immediate address if zero flag not set (0xC4)
         uint8_t CALL_NZ_a16();
 
+        // Call 16-bit immediate address if zero flag set (0xCC)
+        uint8_t CALL_Z_a16();
+
         // Return from subroutine (0xC9)
         uint8_t RET();
 

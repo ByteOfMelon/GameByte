@@ -530,6 +530,7 @@ void CPU::init_instructions() {
     instructions[0xBE] = { "CP A, [HL]", &CPU::CP_at_HL };
 
     instructions[0xCD] = { "CALL a16", &CPU::CALL_a16 };
+    instructions[0xCC] = { "CALL Z, a16", &CPU::CALL_Z_a16 };
     instructions[0xC4] = { "CALL NZ, a16", &CPU::CALL_NZ_a16 };
     instructions[0xC9] = { "RET", &CPU::RET };
     instructions[0xD9] = { "RETI", &CPU::RETI };
@@ -1165,6 +1166,22 @@ uint8_t CPU::CALL_NZ_a16() {
     return 12;
 }
 
+uint8_t CPU::CALL_Z_a16() {
+    uint16_t address = mmu->read_word(pc);
+    pc += 2;
+
+    if (get_flag_z()) {
+        // Push current PC to stack
+        sp -= 2;
+        mmu->write_word(sp, pc);
+
+        // Jump to address
+        pc = address;
+        return 24;
+    }
+
+    return 12;
+}
 
 uint8_t CPU::RET() {
     // Pop address from stack into PC
