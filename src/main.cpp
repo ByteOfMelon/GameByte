@@ -156,7 +156,19 @@ int main(int argc, char* argv[]) {
         if (keys[SDL_SCANCODE_F1]) {
             mmu.dump_vram();
         }
-        
+
+        if (keys[SDL_SCANCODE_F2]) {
+            mmu.dump_hram();
+        }
+
+        if (keys[SDL_SCANCODE_F3]) {
+            cpu.debug_interrupt_status();
+        }
+
+        if (keys[SDL_SCANCODE_F4]) {
+            cpu.dump_history();
+        }
+
         // Timing synchronization
         uint64_t end_time = SDL_GetTicks();
         double elapsed_ms = static_cast<double>(end_time - start_time);

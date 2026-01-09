@@ -48,9 +48,13 @@ void PPU::render_blank() {
 void PPU::tick(uint8_t cycles) {
     // Check if LCD is enabled (LCDC bit 7)
     if (!(lcdc & 0x80)) {
+        // Reset PPU state when LCD is disabled
         ppu_cycles = 0;
         current_ly = 0;
-        mode = 2; // When LCD is re-enabled, restart in OAM Search (Mode 2)
+        mode = 0;
+        
+        // Ensure STAT register reflects Mode 0 and clears coincidence bit
+        stat &= ~0x07;
         first_frame_after_enable = true;
         return;
     }
