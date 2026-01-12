@@ -2,10 +2,12 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "joypad.h"
+#include "rom.h"
 #include <cstring>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <fstream> 
 
 MMU::MMU() {
     // Initialize memory arrays and variables
@@ -31,18 +33,47 @@ void MMU::connect_joypad(Joypad* j) {
     joypad = j;
 }
 
+void MMU::connect_rom(ROM* r) {
+    rom = r;
+}
+
 bool MMU::load_game(const uint8_t* data, size_t size) {
     // Clear cartridge memory
     memset(cart, 0, sizeof(cart));
-
-    if (size > sizeof(cart)) {
-        // For now, if ROM is larger than 32KB, throw an error. In the future this needs to be handled by MBC logic.
-        throw std::runtime_error("[MMU] ERROR: ROM size (" + std::to_string(size) + ") larger than 32KB. Bank switching/MBC logic is not currently supported.");
-        std::memcpy(cart, data, sizeof(cart));
-    } else {
-        std::memcpy(cart, data, size);
-    }
+    memset(eram, 0, sizeof(eram)); // Clear external RAM
     
+    // Reset MBC1 state
+    mbc1_ram_enabled = false;
+    mbc1_rom_bank = 1;
+    mbc1_ram_bank = 0;
+    mbc1_banking_mode = 0;
+
+    // Copy as much as fits into the static array for fallback
+    size_t copy_size = (size < sizeof(cart)) ? size : sizeof(cart);
+    std::memcpy(cart, data, copy_size);
+    
+    return true;
+}
+
+bool MMU::load_save(const char* filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) return false;
+
+    file.read(reinterpret_cast<char*>(eram), sizeof(eram));
+    file.close();
+    
+    std::cout << "[MMU] Loaded battery backup RAM from " << filename << std::endl;
+    return true;
+}
+
+bool MMU::save_game(const char* filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) return false;
+
+    file.write(reinterpret_cast<const char*>(eram), sizeof(eram));
+    file.close();
+
+    std::cout << "[MMU] Saved battery backup RAM to " << filename << std::endl;
     return true;
 }
 
@@ -50,13 +81,50 @@ uint8_t MMU::read_byte(uint16_t address) {
     // Find byte in memory map
     if (address <= 0x7FFF) {
         // Cartridge ROM
+        if (rom && rom->data) {
+            uint8_t type = rom->data[ROM::OFFSET_TYPE];
+            if (type == ROM::ROM_MBC1 || type == ROM::ROM_MBC1_RAM || type == ROM::ROM_MBC1_RAM_BATT) {
+                if (address <= 0x3FFF) {
+                    // Bank 0 unless mode 1 selected
+                    uint8_t bank = 0;
+                    if (mbc1_banking_mode == 1) {
+                        bank = (mbc1_ram_bank << 5);
+                    }
+                    size_t offset = (bank * 0x4000) + address;
+                    return rom->data[offset % rom->size];
+                } else {
+                    // Bank 1-7F (switchable)
+                    uint8_t bank = mbc1_rom_bank; // Lower 5 bits
+                    // If Mode 0, include upper 2 bits from ram_bank
+                    if (mbc1_banking_mode == 0) {
+                        bank |= (mbc1_ram_bank << 5);
+                    }
+                    size_t offset = (bank * 0x4000) + (address - 0x4000);
+                    return rom->data[offset % rom->size];
+                }
+            }
+            // For non-MBC1 roms, just read directly
+            return rom->data[address % rom->size];
+        }
         return cart[address];
     } else if (address <= 0x9FFF) {
         // VRAM
         return vram[address - 0x8000];
     } else if (address <= 0xBFFF) {
         // External RAM
-        return eram[address - 0xA000];
+        if (!mbc1_ram_enabled) {
+             return 0xFF; // Disabled RAM returns FF
+        }
+        
+        // Calculate RAM Bank
+        uint8_t bank = 0;
+        if (mbc1_banking_mode == 1) {
+            bank = mbc1_ram_bank;
+        }
+        // Mode 0 restricts to Bank 0, so bank remains 0
+        
+        size_t offset = (bank * 0x2000) + (address - 0xA000);
+        return eram[offset];
     } else if (address <= 0xDFFF) {
         // Work RAM
         return wram[address - 0xC000];
@@ -185,13 +253,40 @@ void MMU::write_byte(uint16_t address, uint8_t value) {
     // Other bytes - find byte in memory map
     if (address <= 0x7FFF) {
         // Cartridge ROM is read-only directly, but used for MBC commands
-        // TODO: Implement MBC banking support
+        if (rom && rom->data) {
+            uint8_t type = rom->data[ROM::OFFSET_TYPE];
+            
+            // Handle MBC1
+            if (type == ROM::ROM_MBC1 || type == ROM::ROM_MBC1_RAM || type == ROM::ROM_MBC1_RAM_BATT) {
+                if (address >= 0x0000 && address <= 0x1FFF) {
+                    // RAM Enable/Disable
+                    mbc1_ram_enabled = ((value & 0x0F) == 0x0A);
+                } else if (address >= 0x2000 && address <= 0x3FFF) {
+                    // ROM Bank Number (Lower 5 bits)
+                    mbc1_rom_bank = value & 0x1F;
+                    if (mbc1_rom_bank == 0) mbc1_rom_bank = 1;
+                } else if (address >= 0x4000 && address <= 0x5FFF) {
+                    // RAM Bank Number / Upper Bits of ROM Bank Number
+                    mbc1_ram_bank = value & 0x03;
+                } else if (address >= 0x6000 && address <= 0x7FFF) {
+                    // Banking Mode Select
+                    mbc1_banking_mode = value & 0x01;
+                }
+            }
+        }
     } else if (address <= 0x9FFF) {
         // VRAM
         vram[address - 0x8000] = value;
     } else if (address <= 0xBFFF) {
         // External RAM
-        eram[address - 0xA000] = value;
+        if (mbc1_ram_enabled) {
+            uint8_t bank = 0;
+            if (mbc1_banking_mode == 1) {
+                bank = mbc1_ram_bank;
+            }
+            size_t offset = (bank * 0x2000) + (address - 0xA000);
+            eram[offset] = value;
+        }
     } else if (address <= 0xDFFF) {
         // Work RAM
         wram[address - 0xC000] = value;

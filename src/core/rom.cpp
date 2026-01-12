@@ -31,11 +31,19 @@ bool ROM::load(const char* filename) {
     fread((void*)data, 1, size, file);
     fclose(file);
 
-    // Temp - only allow plain ROMs for now
-    if (data[OFFSET_TYPE] != ROM_PLAIN) {
-        printf("[ROM] Unsupported ROM type: 0x%02X. Only plain ROMs are supported currently.\n", data[OFFSET_TYPE]);
-        unload();
-        return false;
+    // Only allow supported ROM types
+    switch (data[OFFSET_TYPE]) {
+        case ROM_PLAIN:
+            break;
+        case ROM_MBC1:
+        case ROM_MBC1_RAM:
+        case ROM_MBC1_RAM_BATT:
+            break;
+        default:
+            printf("[ROM] Unsupported or unimplemented ROM type: 0x%02X\n", data[OFFSET_TYPE]);
+            unload();
+            return false;
+            break;
     }
 
     // Debug - log ROM's header values

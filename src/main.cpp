@@ -42,6 +42,7 @@ int main(int argc, char* argv[]) {
     cpu.connect_mmu(&mmu);
     mmu.connect_cpu(&cpu);
     mmu.connect_joypad(&joypad);
+    mmu.connect_rom(&rom);
 
     // Initialization
     std::cout << "[GameByte] Initializing GameByte..." << std::endl;
@@ -84,6 +85,19 @@ int main(int argc, char* argv[]) {
     // Attempt to load ROM from path
     if (ROM::load(dialog_state.selected_path.c_str())) {
         mmu.load_game(ROM::data, ROM::size);
+
+        // Handle battery backup save loading
+        if (ROM::data[ROM::OFFSET_TYPE] == ROM::ROM_MBC1_RAM_BATT) {
+            std::string save_path = dialog_state.selected_path;
+            
+            size_t lastindex = save_path.find_last_of("."); 
+            if (lastindex != std::string::npos) {
+                save_path = save_path.substr(0, lastindex); 
+            }
+            save_path += ".sav";
+            mmu.load_save(save_path.c_str());
+        }
+
     } else {
         std::string error_msg = "Failed to load ROM: " + dialog_state.selected_path;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "GameByte - Initialization Error", error_msg.c_str(), nullptr);
@@ -120,6 +134,17 @@ int main(int argc, char* argv[]) {
                         // Handle quit event
                         if (e.type == SDL_EVENT_QUIT) {
                             running = false;
+                            
+                            // Save game data on exit if applicable
+                            if (rom.data && rom.data[ROM::OFFSET_TYPE] == ROM::ROM_MBC1_RAM_BATT) {
+                                std::string save_path = dialog_state.selected_path;
+                                size_t lastindex = save_path.find_last_of("."); 
+                                if (lastindex != std::string::npos) {
+                                    save_path = save_path.substr(0, lastindex); 
+                                }
+                                save_path += ".sav";
+                                mmu.save_game(save_path.c_str());
+                            }
                         }
 
                         // Input handoff from SDL to Joypad

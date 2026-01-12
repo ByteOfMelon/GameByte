@@ -8,6 +8,7 @@
 class CPU;
 class PPU;
 class Joypad;
+class ROM;
 
 /**
  * @brief Implements the Game Boy's Memory Management Unit (MMU).alignas
@@ -41,6 +42,9 @@ class MMU {
         Joypad* joypad = nullptr;
         void connect_joypad(Joypad* j);
 
+        ROM* rom = nullptr;
+        void connect_rom(ROM* r);
+
         uint8_t read_byte(uint16_t address);
         void write_byte(uint16_t address, uint8_t value);
 
@@ -48,6 +52,8 @@ class MMU {
         void write_word(uint16_t address, uint16_t value);
         
         bool load_game(const uint8_t* data, size_t size);
+        bool load_save(const char* filename);
+        bool save_game(const char* filename);
 
         // Debug functions to dump HRAM/VRAM contents
         void dump_hram();
@@ -55,10 +61,16 @@ class MMU {
     private:
         unsigned char cart[0x8000]; // 32 KB total cartridge ROM space
         unsigned char vram[0x2000]; // 8 KB of video RAM (VRAM)
-        unsigned char eram[0x2000]; // 8 KB of external RAM (cartridge battery-backed RAM)
+        unsigned char eram[0x8000]; // 32 KB of external RAM (cartridge battery-backed RAM) - Supports up to 4 banks for MBC1
         unsigned char wram[0x2000]; // 8 KB of work RAM (WRAM). In CGB mode, this is switchable banks 1-7
         unsigned char oam[0xA0];    // 160 bytes for sprite attribute memory (OAM)
         unsigned char io[0x80];     // 128 bytes for I/O registers
         unsigned char hram[0x7F];   // 127 bytes for high RAM
         uint8_t ie;                 // Interrupt Enable register (IE) at 0xFFFF
+
+        // MBC1 specific state
+        bool mbc1_ram_enabled = false;
+        uint8_t mbc1_rom_bank = 1;      
+        uint8_t mbc1_ram_bank = 0;
+        uint8_t mbc1_banking_mode = 0;  // 0 = ROM banking mode, 1 = RAM banking mode
 };

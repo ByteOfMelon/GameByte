@@ -8,7 +8,7 @@ class ROM {
 
         static const unsigned char* data;
         static size_t size;
-    private:
+
         enum romOffsets {
             OFFSET_TITLE = 0x0134,
             OFFSET_TYPE = 0x0147,

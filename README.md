@@ -26,7 +26,7 @@ You can build with a regular CMake build command, or utilize the VS Code launch 
 You will need to provide your own Game Boy ROM file from a legal source. GameByte will open a file selection dialog and ask you to provide a .gb ROM file. Note that slowdowns and inaccuracies are to be expected.
 
 # Compatibility
-GameByte is a research emulator that is not intended to be fully accurate or usable with a lot of Game Boy games. However, a compatibility list showing tested games are listed below. Note that the emulator does not (yet) support sound of any kind or any MBC emulation.
+GameByte is a research emulator that is not intended to be fully accurate or usable with a lot of Game Boy games. However, a compatibility list showing *tested* games are listed below. Note that the emulator only supports MBC1 emulation, but does support MBC1 battery backup saving. Also, a ROM that hasn't been tested could still work.
 
 ## States
 - **Playable** - Games that can be completed with playable performance and no game breaking glitches
@@ -36,11 +36,12 @@ GameByte is a research emulator that is not intended to be fully accurate or usa
 
 ## Compatibility List (tested games only)
 
-| **Game Title**                 | **Publisher** | **Year** | **State**                |
-|--------------------------------|---------------|----------|--------------------------|
-| Tetris                         | Nintendo      | 1989     | Playable                 |
-| Dr. Mario                      | Nintendo      | 1990     | Playable                 |
-| Space Invaders (Japan)         | Taito         | 1990     | Playable                 |
-| Asteroids                      | Accolade      | 1992     | Playable                 |
-| Minesweeper: Soukaitei (Japan) | Pack-in-Video | 1991     | Playable                 |
-| (Pretty much) Every other game | Anyone        | Any time | Nothing/possibly menus   |
+| **Game Title**                        | **Publisher** | **Year** | **State**                |
+|---------------------------------------|---------------|----------|--------------------------|
+| Tetris                                | Nintendo      | 1989     | Playable                 |
+| Dr. Mario                             | Nintendo      | 1990     | Playable                 |
+| Space Invaders (Japan)                | Taito         | 1990     | Playable                 |
+| Asteroids                             | Accolade      | 1992     | Playable                 |
+| Minesweeper: Soukaitei (Japan)        | Pack-in-Video | 1991     | Playable                 |
+| Super Mario Land                      | Nintendo      | 1989     | Playable                 |
+| The Legend of Zelda: Link's Awakening | Nintendo      | 1993     | Playable                 |
