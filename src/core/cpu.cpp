@@ -278,20 +278,50 @@ uint8_t CPU::handle_interrupts() {
 
 uint8_t CPU::execute_interrupt(uint8_t bit, uint16_t vector) {
     ime = false;
+    ime_delay = 0; // Cancel any scheduled EI enable
+
+    // Push high byte
+    sp--;
+    mmu->write_byte(sp, (pc >> 8) & 0xFF);
+
+    // Cancellation check - if the first push overwrote IE (0xFFFF) and disabled the intented interrupt, then abort
+    uint8_t ie_reg = mmu->read_byte(0xFFFF);
+    
+    // Check if current interrupt bit is still enabled
+    if (!(ie_reg & (1 << bit))) {
+        // The original interrupt was disabled by the push; re-evaluate if any interrupt is now valid
+        uint8_t if_reg = mmu->read_byte(0xFF0F);
+        uint8_t pending = if_reg & ie_reg & 0x1F;
+
+        if (pending == 0) {
+            // No interrupts are enabled, cancel dispatch
+            sp--;
+            mmu->write_byte(sp, pc & 0xFF);
+            pc = 0x0000;
+            return 20;
+        } else {
+            // An interrupt is still pending - find highest priority (0 = V-blank, 1 = STAT, 2 = Timer, 3 = Serial, 4 = Joypad)
+            for (int i = 0; i < 5; i++) {
+                if (pending & (1 << i)) {
+                    bit = i;
+                    vector = 0x0040 + (i * 0x08);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Push low byte
+    sp--;
+    mmu->write_byte(sp, pc & 0xFF);
     
     // Clear the specific interrupt bit in IF register
     uint8_t if_reg = mmu->read_byte(0xFF0F);
     mmu->write_byte(0xFF0F, if_reg & ~(1 << bit));
-
-    // Push PC to stack
-    sp -= 2;
-    mmu->write_word(sp, pc);
-
-    // Jump to the interrupt handler vector
+    
+    // Jump to vector
     pc = vector;
 
-    // Interrupt dispatch takes approximately 20 clock cycles total
-    // (5 machine cycles: 2 for internal logic + 2 for pushing PC + 1 for jump)
     return 20; 
 }
 
@@ -1105,6 +1135,7 @@ uint8_t CPU::JR_NZ_e8() {
 
 uint8_t CPU::DI() {
     ime = false;
+    ime_delay = 0;
     return 4;
 }
 

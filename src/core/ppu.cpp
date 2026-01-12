@@ -70,19 +70,19 @@ void PPU::tick(uint8_t cycles) {
             }
             break;
         
-        // Pixel transfer (172 cycles)
+        // Pixel transfer (172 cycles, emulated as 168 for timing accuracy)
         case 3:
-            if (ppu_cycles >= 172) {
-                ppu_cycles -= 172;
+            if (ppu_cycles >= 168) {
+                ppu_cycles -= 168;
                 mode = 0;
                 draw_scanline(); // Draw the current line at the end of transfer
             }
             break;
         
-        // H-blank (204 cycles)
+        // H-blank (204 cycles, emulated as 208 for timing accuracy)
         case 0:
-            if (ppu_cycles >= 204) {
-                ppu_cycles -= 204;
+            if (ppu_cycles >= 208) {
+                ppu_cycles -= 208;
                 current_ly++;
 
                 if (current_ly == 144) {
